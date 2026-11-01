@@ -438,10 +438,10 @@ func (m Model) detail(it catalog.Item, w, imgCols int) string {
 		b.WriteString("\n" + sSub.Width(w-2).Render(it.Description) + "\n")
 	}
 	if it.WikiURL != "" {
-		b.WriteString("\n" + sKey.Render("w") + sDim.Render(" wiki & drop locations"))
+		b.WriteString("\n" + sKey.Render("w") + sDim.Render(" wiki / drops"))
 	}
 	if it.ImageName != "" {
-		b.WriteString(sDim.Render(" · ") + sKey.Render("i") + sDim.Render(" full-size image"))
+		b.WriteString(sDim.Render(" · ") + sKey.Render("i") + sDim.Render(" full image"))
 	}
 	return b.String()
 }
