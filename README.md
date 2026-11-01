@@ -47,14 +47,23 @@ In the TUI press `?` for every key. The main ones:
 | `H` | hide / show mastered items (remembered between sessions) |
 | `tab` / `1`-`0` | change category |
 | `/` | search |
-| `f` | filter: all, owned but not mastered, in progress, mastered, new |
+| `f` | filter: all, owned but not mastered, in progress, collecting parts, mastered, new |
 | `s` | sort: name, type, newest release |
-| `enter` | details with a large image |
+| `enter` | details with a large image; check off parts there (`j`/`k` pick, `p` have it, `a` all/none) |
 | `w` / `i` | open the wiki page (drop locations) / the full-size image |
 | `T` | theme: follow your terminal's colours (default), or Seshat's own |
 | `x` | ledger: star chart, steel path & intrinsics XP for the MR estimate |
 | `u` | sync item data now |
 | `P` | import mastery from your saved Warframe profile |
+
+## Collecting parts
+
+Open an item with `enter` and its foundry list becomes a checklist: move with
+`j`/`k`, press `p` to mark a blueprint or part as held (parts needed twice,
+like Dual Kamas Prime blades, count 0 → 1 → 2), or `a` to fill or clear them
+all. Resources such as Orokin Cells are listed but not tracked. Items you're
+collecting show `▪2/4` in the list until you mark them owned, and the
+`collecting parts` filter (`f`) lists them all — handy before a relic run.
 
 ## Importing from your profile
 

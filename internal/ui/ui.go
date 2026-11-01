@@ -37,13 +37,14 @@ const (
 	fAll filterMode = iota
 	fOwnedUnmastered
 	fInProgress
+	fCollecting
 	fMastered
 	fNew
 	numFilters
 )
 
 func (f filterMode) String() string {
-	return [...]string{"all", "owned · not mastered", "in progress", "mastered", "new"}[f]
+	return [...]string{"all", "owned · not mastered", "in progress", "collecting parts", "mastered", "new"}[f]
 }
 
 type sortMode int
@@ -94,6 +95,7 @@ type Model struct {
 	ledgerAt int
 	pathIn   textinput.Model
 	fromProf bool // the import modal reads a Warframe profile, not a backup
+	partAt   int  // selected part in the details view
 
 	imgMode termimg.Mode
 	images  map[string]string // imgKey(name, cols) -> rendered, "" while pending
@@ -282,6 +284,9 @@ func (m Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch k.String() {
 		case "o", "m", " ", "w", "i":
 			// marking, the wiki link and the image viewer still work here
+		case "down", "j", "up", "k", "p", "a":
+			m.partKey(k.String())
+			return m, nil
 		default:
 			m.modal = mNone
 			return m, m.wantImage()
@@ -420,7 +425,7 @@ func (m Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		moved = true
 	case "enter":
 		if _, ok := m.current(); ok {
-			m.modal = mDetail
+			m.modal, m.partAt = mDetail, 0
 			return m, m.wantImage()
 		}
 	case "w":
@@ -615,6 +620,10 @@ func (m *Model) rebuild() {
 			if mk.Mastered || mk.Rank == 0 {
 				continue
 			}
+		case fCollecting:
+			if held, _ := m.partsProgress(it); mk.Owned || held == 0 {
+				continue
+			}
 		case fMastered:
 			if !mk.Mastered {
 				continue
@@ -770,6 +779,56 @@ func (m *Model) markOwned() {
 	}
 	m.save()
 	m.rebuildKeep()
+}
+
+// partKey moves through and checks off the current item's parts: p steps
+// the selected part through 0..needed, a fills or clears them all.
+func (m *Model) partKey(key string) {
+	it, ok := m.current()
+	if !ok {
+		return
+	}
+	parts := it.Parts()
+	if len(parts) == 0 {
+		m.say("%s has no parts to collect.", it.Name)
+		return
+	}
+	m.partAt = min(max(m.partAt, 0), len(parts)-1)
+	switch key {
+	case "down", "j":
+		m.partAt = min(m.partAt+1, len(parts)-1)
+		return
+	case "up", "k":
+		m.partAt = max(m.partAt-1, 0)
+		return
+	case "p":
+		c := parts[m.partAt]
+		m.prog.SetPart(it.ID, c.ID, (m.prog.HeldParts(it.ID, c.ID)+1)%(c.Count+1))
+	case "a":
+		held, need := m.partsProgress(it)
+		for _, c := range parts {
+			n := 0
+			if held < need {
+				n = c.Count
+			}
+			m.prog.SetPart(it.ID, c.ID, n)
+		}
+	}
+	if held, need := m.partsProgress(it); held == need {
+		m.say("All parts for %s collected: ready for the foundry.", it.Name)
+	} else {
+		m.say("%s: %d of %d parts collected.", it.Name, held, need)
+	}
+	m.save()
+}
+
+// partsProgress counts the parts held toward an item and the parts needed.
+func (m Model) partsProgress(it catalog.Item) (held, need int) {
+	for _, c := range it.Parts() {
+		held += min(m.prog.HeldParts(it.ID, c.ID), c.Count)
+		need += c.Count
+	}
+	return held, need
 }
 
 func (m Model) current() (catalog.Item, bool) {

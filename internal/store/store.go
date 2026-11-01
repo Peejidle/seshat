@@ -44,9 +44,12 @@ type Progress struct {
 	Extra   ExtraXP         `json:"extra"`
 	// Seen holds every item ID the archive has shown before, so items added
 	// upstream can be flagged as new.
-	Seen     map[string]bool `json:"seen"`
-	Settings Settings        `json:"settings"`
-	Updated  time.Time       `json:"updated"`
+	Seen map[string]bool `json:"seen"`
+	// Parts counts the blueprints and parts held toward an item:
+	// item ID -> component ID -> how many.
+	Parts    map[string]map[string]int `json:"parts,omitempty"`
+	Settings Settings                  `json:"settings"`
+	Updated  time.Time                 `json:"updated"`
 }
 
 func New() *Progress {
@@ -100,6 +103,27 @@ func (p *Progress) Save(path string) error {
 	return os.Rename(tmp, path)
 }
 
+// HeldParts is how many of a component the user holds toward an item.
+func (p *Progress) HeldParts(item, part string) int { return p.Parts[item][part] }
+
+// SetPart records n of a component held toward an item.
+func (p *Progress) SetPart(item, part string, n int) {
+	if n <= 0 {
+		delete(p.Parts[item], part)
+		if len(p.Parts[item]) == 0 {
+			delete(p.Parts, item)
+		}
+		return
+	}
+	if p.Parts == nil {
+		p.Parts = map[string]map[string]int{}
+	}
+	if p.Parts[item] == nil {
+		p.Parts[item] = map[string]int{}
+	}
+	p.Parts[item][part] = n
+}
+
 func (p *Progress) Get(id string) Mark { return p.Marks[id] }
 
 func (p *Progress) Set(id string, m Mark) {
@@ -110,7 +134,7 @@ func (p *Progress) Set(id string, m Mark) {
 	p.Marks[id] = m
 }
 
-// Import replaces marks and extra XP from a backup file, keeping Seen.
+// Import replaces marks, parts and extra XP from a backup file, keeping Seen.
 func (p *Progress) Import(path string) error {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -120,7 +144,7 @@ func (p *Progress) Import(path string) error {
 	if err != nil {
 		return err
 	}
-	p.Marks, p.Extra = in.Marks, in.Extra
+	p.Marks, p.Parts, p.Extra = in.Marks, in.Parts, in.Extra
 	return nil
 }
 

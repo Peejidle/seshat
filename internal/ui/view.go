@@ -338,6 +338,8 @@ func (m Model) row(i, w, nameW int) string {
 	}
 	if !mk.Mastered && mk.Rank > 0 {
 		typ = fmt.Sprintf("%s %d/%d", typ, mk.Rank, it.MaxRank)
+	} else if held, need := m.partsProgress(it); !mk.Owned && held > 0 {
+		typ = fmt.Sprintf("%s ▪%d/%d", typ, held, need)
 	}
 
 	var b strings.Builder
@@ -438,13 +440,42 @@ func (m Model) detail(it catalog.Item, w, imgCols int) string {
 	kv("Status", strings.Join(flags, " · "))
 
 	if len(it.Components) > 0 {
-		b.WriteString("\n" + sLapis.Render("Foundry") + "\n")
+		head := sLapis.Render("Foundry")
+		if held, need := m.partsProgress(it); need > 0 {
+			head += sDim.Render(fmt.Sprintf("  %d/%d parts", held, need))
+		}
+		b.WriteString("\n" + head + "\n")
+		part := 0
 		for _, c := range it.Components {
 			n := c.Name
-			if c.Count > 1 {
-				n = fmt.Sprintf("%s × %s", n, commas(c.Count))
+			if !c.Part {
+				if c.Count > 1 {
+					n = fmt.Sprintf("%s × %s", n, commas(c.Count))
+				}
+				b.WriteString(sDim.Render("    · "+trunc(n, w-8)) + "\n")
+				continue
 			}
-			b.WriteString(sText.Render("  · "+trunc(n, w-6)) + "\n")
+			held := min(m.prog.HeldParts(it.ID, c.ID), c.Count)
+			box, st := sDim.Render("[ ]"), sText
+			switch {
+			case held == c.Count:
+				box = sGold.Render("[✓]")
+			case held > 0:
+				box = sGold.Render("[◐]")
+			}
+			if c.Count > 1 {
+				n = fmt.Sprintf("%s %d/%d", n, held, c.Count)
+			}
+			sel := "  "
+			if m.modal == mDetail && part == m.partAt {
+				sel, st = sGold.Render("▸ "), sTitle
+			}
+			b.WriteString(sel + box + " " + st.Render(trunc(n, w-8)) + "\n")
+			part++
+		}
+		if m.modal == mDetail && part > 0 {
+			b.WriteString(sDim.Render("  ") + sKey.Render("j/k") + sDim.Render(" pick · ") +
+				sKey.Render("p") + sDim.Render(" have it · ") + sKey.Render("a") + sDim.Render(" all/none") + "\n")
 		}
 	}
 	if it.Description != "" {
@@ -497,9 +528,9 @@ func (m Model) helpView() string {
 		{"⇥ ⇤ ← →", "change category · 1-0 jump to category"},
 		{"/", "search names and types · esc clears"},
 		{"H", "hide / show mastered items (remembered)"},
-		{"f", "cycle filter: all, owned, in progress, mastered, new"},
+		{"f", "cycle filter: all, owned, in progress, collecting, mastered, new"},
 		{"s", "cycle sort: name, type, newest"},
-		{"enter", "full details with a large image"},
+		{"enter", "details: check off parts with j/k and p (a = all)"},
 		{"w / i", "open the wiki page / full-size image"},
 		{"T", "theme: follow terminal colours, or Seshat's own"},
 		{"x", "ledger: star chart, steel path & intrinsic XP"},
@@ -514,7 +545,7 @@ func (m Model) helpView() string {
 	for _, r := range rows {
 		b.WriteString(sKey.Render(pad(r[0], 12)) + sText.Render(r[1]) + "\n")
 	}
-	b.WriteString("\n" + sSub.Render("★ mastered  ◐ in progress  ● owned  ✦ new since last sync  ⁂ prime") + "\n")
+	b.WriteString("\n" + sSub.Render("★ mastered  ◐ in progress  ● owned  ▪ parts held  ✦ new  ⁂ prime") + "\n")
 	b.WriteString(sSub.Render("Item data: WFCD warframe-items (community-maintained, refreshed every 6h).") + "\n")
 	b.WriteString(sSub.Render(fmt.Sprintf("Images: %s mode (set SESHAT_IMAGES=kitty|blocks|off to override).", m.imgMode)))
 	return b.String()

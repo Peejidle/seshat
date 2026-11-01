@@ -66,3 +66,32 @@ func TestHideMastered(t *testing.T) {
 		t.Errorf("cursor on %s, want Atlas (next row)", it.Name)
 	}
 }
+
+func TestParts(t *testing.T) {
+	m := testModel(t)
+	m.items[0].Components = []catalog.Component{
+		{ID: "bp", Name: "Blueprint", Count: 1, Part: true},
+		{ID: "cell", Name: "Orokin Cell", Count: 3},
+		{ID: "blade", Name: "Blade", Count: 2, Part: true},
+	}
+	m.rebuild()
+	m = press(m, "enter", "p", "j", "p")
+	if held, need := m.partsProgress(m.items[0]); held != 2 || need != 3 {
+		t.Fatalf("parts = %d/%d, want 2/3", held, need)
+	}
+	if m.modal != mDetail {
+		t.Fatal("checking off parts closed the details view")
+	}
+	m = press(m, "p", "p") // 2 of 2 blades, then wraps to 0
+	if n := m.prog.HeldParts("Ash", "blade"); n != 0 {
+		t.Errorf("blade count = %d, want wrap to 0", n)
+	}
+	m = press(m, "esc", "f", "f", "f")
+	if m.filter != fCollecting || len(m.visible) != 1 {
+		t.Errorf("collecting filter shows %d, want just Ash", len(m.visible))
+	}
+	m = press(m, "enter", "a")
+	if _, ok := m.prog.Parts["Ash"]; !ok || m.prog.HeldParts("Ash", "cell") != 0 {
+		t.Errorf("a should fill parts only, not resources: %v", m.prog.Parts)
+	}
+}

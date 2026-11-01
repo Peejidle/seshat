@@ -35,8 +35,10 @@ var Categories = []Category{
 
 // Component is one ingredient in an item's foundry recipe.
 type Component struct {
+	ID    string // uniqueName
 	Name  string
 	Count int
+	Part  bool // a blueprint or crafted part, as opposed to a resource
 }
 
 // Item is a single masterable thing.
@@ -68,6 +70,17 @@ func (it Item) EarnedXP(mastered bool, rank int) int {
 		return it.MasteryXP()
 	}
 	return min(max(rank, 0), it.MaxRank) * it.XPPerRank
+}
+
+// Parts are the components worth collecting: blueprints and crafted parts.
+func (it Item) Parts() []Component {
+	var ps []Component
+	for _, c := range it.Components {
+		if c.Part {
+			ps = append(ps, c)
+		}
+	}
+	return ps
 }
 
 // SourceFiles are the WFCD category files Seshat consumes.
@@ -146,7 +159,10 @@ func Load(dir string) ([]Item, error) {
 			if n == "" {
 				n = partName(c.UniqueName)
 			}
-			it.Components = append(it.Components, Component{Name: n, Count: c.ItemCount})
+			it.Components = append(it.Components, Component{
+				ID: c.UniqueName, Name: n, Count: c.ItemCount,
+				Part: strings.HasPrefix(c.UniqueName, "/Lotus/Types/Recipes/"),
+			})
 		}
 		items = append(items, it)
 	}
