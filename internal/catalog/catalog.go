@@ -38,7 +38,14 @@ type Component struct {
 	ID    string // uniqueName
 	Name  string
 	Count int
-	Part  bool // a blueprint or crafted part, as opposed to a resource
+	Part  bool // a blueprint, part or ingredient item, as opposed to a resource
+}
+
+// Use is another item whose recipe consumes this one.
+type Use struct {
+	ID    string
+	Name  string
+	Count int
 }
 
 // Item is a single masterable thing.
@@ -58,6 +65,7 @@ type Item struct {
 	Prime       bool
 	WikiURL     string
 	Components  []Component
+	UsedIn      []Use // recipes that consume this item, e.g. Bronco -> Akbronco
 }
 
 // MasteryXP is the account mastery granted by ranking the item to max.
@@ -154,21 +162,57 @@ func Load(dir string) ([]Item, error) {
 			continue
 		}
 		seen[it.ID] = true
-		for _, c := range t.raw.Components {
-			n := names[c.UniqueName]
-			if n == "" {
-				n = partName(c.UniqueName)
-			}
-			it.Components = append(it.Components, Component{
-				ID: c.UniqueName, Name: n, Count: c.ItemCount,
-				Part: strings.HasPrefix(c.UniqueName, "/Lotus/Types/Recipes/"),
-			})
-		}
 		items = append(items, it)
+	}
+	// Components are resolved once every item is known, since some recipes
+	// consume other masterable items.
+	byID := map[string]int{}
+	for i, it := range items {
+		byID[it.ID] = i
+	}
+	for _, t := range all {
+		i, ok := byID[t.raw.UniqueName]
+		if !ok || items[i].Components != nil {
+			continue
+		}
+		items[i].Components = components(t.raw, names, byID)
+		for _, c := range items[i].Components {
+			if j, ok := byID[c.ID]; ok {
+				items[j].UsedIn = append(items[j].UsedIn, Use{ID: items[i].ID, Name: items[i].Name, Count: c.Count})
+			}
+		}
 	}
 	items = append(items, Supplements...)
 	sort.SliceStable(items, func(i, j int) bool { return items[i].Name < items[j].Name })
 	return items, nil
+}
+
+// components lists a recipe's ingredients, merging repeats: WFCD lists the
+// two Broncos an Akbronco needs as two entries.
+func components(r rawItem, names map[string]string, items map[string]int) []Component {
+	var cs []Component
+	at := map[string]int{}
+	for _, c := range r.Components {
+		if i, ok := at[c.UniqueName]; ok {
+			cs[i].Count += c.ItemCount
+			continue
+		}
+		n := names[c.UniqueName]
+		if n == "" {
+			n = partName(c.UniqueName)
+		}
+		_, isItem := items[c.UniqueName]
+		at[c.UniqueName] = len(cs)
+		cs = append(cs, Component{ID: c.UniqueName, Name: n, Count: c.ItemCount, Part: isItem || isPart(c.UniqueName)})
+	}
+	return cs
+}
+
+// isPart tells collectable blueprints and parts from resources.
+func isPart(u string) bool {
+	return strings.HasPrefix(u, "/Lotus/Types/Recipes/") ||
+		strings.HasSuffix(u, "Blueprint") ||
+		strings.Contains(u, "/Resources/Mechs/") // Necramech parts
 }
 
 // classify decides whether a raw entry counts for mastery and where it goes.
@@ -269,7 +313,7 @@ var (
 		{"Stars", "Stars"}, {"Head", "Head"}, {"Ornament", "Ornament"}, {"Disc", "Disc"},
 		{"Boot", "Boot"}, {"Gauntlet", "Gauntlet"}, {"Carapace", "Carapace"},
 		{"Cerebrum", "Cerebrum"}, {"Harness", "Harness"}, {"Wings", "Wings"},
-		{"Blueprint", "Blueprint"},
+		{"Blueprint", "Blueprint"}, {"Engine", "Engine"}, {"WeaponPod", "Weapon Pod"},
 	}
 )
 
@@ -277,7 +321,7 @@ var (
 // e.g. ".../GaussPrimeHelmetComponent" -> "Neuroptics".
 func partName(uniqueName string) string {
 	last := uniqueName[strings.LastIndex(uniqueName, "/")+1:]
-	base := strings.TrimSuffix(last, "Component")
+	base := strings.TrimSuffix(strings.TrimSuffix(last, "Component"), "Item")
 	for _, p := range partWords {
 		if strings.HasSuffix(base, p.key) {
 			return p.label

@@ -439,22 +439,13 @@ func (m Model) detail(it catalog.Item, w, imgCols int) string {
 	}
 	kv("Status", strings.Join(flags, " · "))
 
-	if len(it.Components) > 0 {
-		head := sLapis.Render("Foundry")
-		if held, need := m.partsProgress(it); need > 0 {
-			head += sDim.Render(fmt.Sprintf("  %d/%d parts", held, need))
-		}
-		b.WriteString("\n" + head + "\n")
-		part := 0
-		for _, c := range it.Components {
+	// Resources aren't shown: WFCD only has the final recipe's, not each
+	// part's, so the totals would be misleading.
+	if parts := it.Parts(); len(parts) > 0 {
+		held, need := m.partsProgress(it)
+		b.WriteString("\n" + sLapis.Render("Parts") + sDim.Render(fmt.Sprintf("  %d/%d", held, need)) + "\n")
+		for part, c := range parts {
 			n := c.Name
-			if !c.Part {
-				if c.Count > 1 {
-					n = fmt.Sprintf("%s × %s", n, commas(c.Count))
-				}
-				b.WriteString(sDim.Render("    · "+trunc(n, w-8)) + "\n")
-				continue
-			}
 			held := min(m.prog.HeldParts(it.ID, c.ID), c.Count)
 			box, st := sDim.Render("[ ]"), sText
 			switch {
@@ -471,11 +462,24 @@ func (m Model) detail(it catalog.Item, w, imgCols int) string {
 				sel, st = sGold.Render("▸ "), sTitle
 			}
 			b.WriteString(sel + box + " " + st.Render(trunc(n, w-8)) + "\n")
-			part++
 		}
-		if m.modal == mDetail && part > 0 {
+		if m.modal == mDetail {
 			b.WriteString(sDim.Render("  ") + sKey.Render("j/k") + sDim.Render(" pick · ") +
 				sKey.Render("p") + sDim.Render(" have it · ") + sKey.Render("a") + sDim.Render(" all/none") + "\n")
+		}
+	}
+	if len(it.UsedIn) > 0 {
+		b.WriteString("\n" + sGold.Render("⚒ Keep for crafting") + "\n")
+		for _, u := range it.UsedIn {
+			n := u.Name
+			if u.Count > 1 {
+				n = fmt.Sprintf("%s (needs %d)", n, u.Count)
+			}
+			if m.prog.Get(u.ID).Mastered {
+				b.WriteString(sDim.Render(trunc("  ★ "+n+" · mastered", w-4)) + "\n")
+			} else {
+				b.WriteString(sText.Render(trunc("  · "+n, w-4)) + "\n")
+			}
 		}
 	}
 	if it.Description != "" {

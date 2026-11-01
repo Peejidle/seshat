@@ -61,9 +61,18 @@ In the TUI press `?` for every key. The main ones:
 Open an item with `enter` and its foundry list becomes a checklist: move with
 `j`/`k`, press `p` to mark a blueprint or part as held (parts needed twice,
 like Dual Kamas Prime blades, count 0 → 1 → 2), or `a` to fill or clear them
-all. Resources such as Orokin Cells are listed but not tracked. Items you're
+all. Weapons a recipe consumes (the two Broncos in an Akbronco) are parts
+too. Resources aren't shown: WFCD only has the final recipe's resources,
+not each part's, so any total would be wrong. Items you're
 collecting show `▪2/4` in the list until you mark them owned, and the
 `collecting parts` filter (`f`) lists them all — handy before a relic run.
+
+## Weapons needed for other weapons
+
+Items that another recipe consumes say **⚒ Keep for crafting** in their
+details, with what they build — e.g. Dual Skana → Akjagara, Dark
+Split-Sword, Redeemer. Once that item is mastered it's shown dimmed with ★,
+so you know the weapon is safe to sell.
 
 ## Importing from your profile
 
