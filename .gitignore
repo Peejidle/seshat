@@ -1,0 +1,6 @@
+# build output
+/seshat
+
+# personal records — never commit these
+progress.json
+seshat-backup-*.json
