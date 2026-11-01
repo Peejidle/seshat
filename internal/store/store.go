@@ -30,7 +30,9 @@ func (e ExtraXP) Total() int {
 
 // Settings are UI preferences that persist between sessions.
 type Settings struct {
-	HideMastered bool `json:"hideMastered"`
+	HideMastered bool   `json:"hideMastered"`
+	Theme        string `json:"theme,omitempty"` // "" follows the terminal
+
 }
 
 type Progress struct {

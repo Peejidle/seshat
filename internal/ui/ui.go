@@ -82,6 +82,7 @@ type Model struct {
 	sort   sortMode
 	cursor int
 	offset int
+	anchor int // start of a bulk selection, or -1
 
 	search    textinput.Model
 	searching bool
@@ -91,9 +92,8 @@ type Model struct {
 	ledgerAt int
 	pathIn   textinput.Model
 
-	images  map[string]string // imageName -> rendered, "" while pending
-	imgErr  map[string]bool
-	imgCols int
+	images map[string]string // imgKey(name, cols) -> rendered, "" while pending
+	imgErr map[string]bool   // imageName -> failed to download or decode
 
 	status    string
 	statusErr bool
@@ -112,9 +112,14 @@ type (
 	}
 	imageMsg struct {
 		name, out string
+		cols      int
 		err       error
 	}
-	imageTick struct{ name string }
+	imageTick struct {
+		name string
+		cols int
+	}
+	openedMsg struct{ err error }
 )
 
 func New(paths Paths, prog *store.Progress) Model {
@@ -129,9 +134,10 @@ func New(paths Paths, prog *store.Progress) Model {
 
 	m := Model{
 		paths: paths, prog: prog, search: s, pathIn: p,
-		newIDs: map[string]bool{},
+		newIDs: map[string]bool{}, anchor: -1,
 		images: map[string]string{}, imgErr: map[string]bool{},
 	}
+	applyTheme(themes[themeIndex(prog.Settings.Theme)])
 	return m
 }
 
@@ -180,10 +186,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		if c := m.imageCols(); c != m.imgCols {
-			m.imgCols = c
-			m.images, m.imgErr = map[string]string{}, map[string]bool{}
-		}
 		m.clamp()
 		return m, m.wantImage()
 
@@ -214,20 +216,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, loadCatalog(m.paths.Data)
 
 	case imageTick:
-		if it, ok := m.current(); ok && it.ImageName == msg.name {
-			if _, have := m.images[msg.name]; !have {
-				m.images[msg.name] = ""
-				return m, fetchImage(m.paths.Images, msg.name, m.imgCols)
+		if it, ok := m.current(); ok && it.ImageName == msg.name && m.wantCols() == msg.cols {
+			key := imgKey(msg.name, msg.cols)
+			if _, have := m.images[key]; !have {
+				m.images[key] = ""
+				return m, fetchImage(m.paths.Images, msg.name, msg.cols)
 			}
 		}
 		return m, nil
 
 	case imageMsg:
+		key := imgKey(msg.name, msg.cols)
 		if msg.err != nil {
-			delete(m.images, msg.name)
+			delete(m.images, key)
 			m.imgErr[msg.name] = true
 		} else {
-			m.images[msg.name] = msg.out
+			m.images[key] = msg.out
+		}
+		return m, nil
+
+	case openedMsg:
+		if msg.err != nil {
+			m.fail("could not open image: %v", msg.err)
 		}
 		return m, nil
 
@@ -266,11 +276,11 @@ func (m Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case mDetail:
 		switch k.String() {
-		case "o", "m", " ", "w":
-			// marking and the wiki link still work from the detail view
+		case "o", "m", " ", "w", "i":
+			// marking, the wiki link and the image viewer still work here
 		default:
 			m.modal = mNone
-			return m, nil
+			return m, m.wantImage()
 		}
 	case mLedger:
 		return m.ledgerKey(k)
@@ -305,7 +315,10 @@ func (m Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "q":
 		return m, tea.Quit
 	case "esc":
-		if m.search.Value() != "" {
+		if m.anchor >= 0 {
+			m.anchor = -1
+			m.say("Selection released.")
+		} else if m.search.Value() != "" {
 			m.search.SetValue("")
 			m.rebuild()
 			moved = true
@@ -351,32 +364,34 @@ func (m Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cursor = len(m.visible) - 1
 		moved = true
 	case " ", "m":
-		if it, ok := m.current(); ok {
-			mk := m.prog.Get(it.ID)
-			mk.Mastered = !mk.Mastered
-			if mk.Mastered {
-				mk.Owned = true
-				m.say("%s — mastery inscribed. +%s XP", it.Name, commas(it.MasteryXP()))
-			} else {
-				m.say("%s — mastery struck from the record.", it.Name)
-			}
-			m.prog.Set(it.ID, mk)
-			m.save()
-			m.rebuildKeep()
-		}
+		m.markMastered()
 	case "o":
-		if it, ok := m.current(); ok {
-			mk := m.prog.Get(it.ID)
-			mk.Owned = !mk.Owned
-			m.prog.Set(it.ID, mk)
-			m.save()
-			if mk.Owned {
-				m.say("%s — marked as in your arsenal.", it.Name)
-			} else {
-				m.say("%s — marked as not owned.", it.Name)
-			}
-			m.rebuildKeep()
+		m.markOwned()
+	case "v":
+		if m.anchor >= 0 {
+			m.anchor = -1
+			m.say("Selection released.")
+		} else if len(m.visible) > 0 {
+			m.anchor = m.cursor
+			m.say("Selecting: move to extend, space/o to mark the range, esc to cancel.")
 		}
+	case "V":
+		if len(m.visible) > 0 {
+			m.anchor, m.cursor = 0, len(m.visible)-1
+			m.say("Selected all %d shown: space/o to mark them, esc to cancel.", len(m.visible))
+			moved = true
+		}
+	case "i":
+		if it, ok := m.current(); ok && it.ImageName != "" {
+			m.say("Opening the likeness of %s…", it.Name)
+			return m, openImage(m.paths.Images, it.ImageName)
+		}
+	case "T":
+		i := (themeIndex(m.prog.Settings.Theme) + 1) % len(themes)
+		m.prog.Settings.Theme = themes[i].name
+		applyTheme(themes[i])
+		m.save()
+		m.say("Theme: %s.", themes[i].name)
 	case "f":
 		m.filter = (m.filter + 1) % numFilters
 		if m.filter == fNew && len(m.newIDs) == 0 {
@@ -402,6 +417,7 @@ func (m Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		if _, ok := m.current(); ok {
 			m.modal = mDetail
+			return m, m.wantImage()
 		}
 	case "w":
 		if it, ok := m.current(); ok && it.WikiURL != "" {
@@ -525,6 +541,7 @@ func (m Model) importKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m *Model) rebuild() {
 	q := strings.ToLower(strings.TrimSpace(m.search.Value()))
+	m.anchor = -1
 	m.visible = m.visible[:0]
 	for i, it := range m.items {
 		if m.tab > 0 && it.Category != catalog.Categories[m.tab-1] {
@@ -609,6 +626,97 @@ func (m *Model) clamp() {
 	}
 }
 
+func (m Model) inSelection(i int) bool {
+	if m.anchor < 0 {
+		return false
+	}
+	return i >= min(m.anchor, m.cursor) && i <= max(m.anchor, m.cursor)
+}
+
+// targets is what a mark applies to: the bulk selection, or the cursor row.
+func (m Model) targets() []catalog.Item {
+	if m.anchor < 0 {
+		if it, ok := m.current(); ok {
+			return []catalog.Item{it}
+		}
+		return nil
+	}
+	var out []catalog.Item
+	for i := min(m.anchor, m.cursor); i <= max(m.anchor, m.cursor); i++ {
+		out = append(out, m.items[m.visible[i]])
+	}
+	return out
+}
+
+// markMastered toggles mastery on the targets. A mixed selection gets
+// mastered; only an all-mastered one is cleared. Mastering implies owning.
+func (m *Model) markMastered() {
+	ts := m.targets()
+	if len(ts) == 0 {
+		return
+	}
+	on, xp := false, 0
+	for _, it := range ts {
+		if !m.prog.Get(it.ID).Mastered {
+			on = true
+		}
+	}
+	for _, it := range ts {
+		mk := m.prog.Get(it.ID)
+		if on && !mk.Mastered {
+			xp += it.MasteryXP()
+		}
+		mk.Mastered = on
+		if on {
+			mk.Owned = true
+		}
+		m.prog.Set(it.ID, mk)
+	}
+	switch {
+	case len(ts) == 1 && on:
+		m.say("%s — mastery inscribed. +%s XP", ts[0].Name, commas(xp))
+	case len(ts) == 1:
+		m.say("%s — mastery struck from the record.", ts[0].Name)
+	case on:
+		m.say("Mastery inscribed for %d items. +%s XP", len(ts), commas(xp))
+	default:
+		m.say("Mastery struck from %d items.", len(ts))
+	}
+	m.save()
+	m.rebuildKeep()
+}
+
+// markOwned toggles ownership the same way as markMastered.
+func (m *Model) markOwned() {
+	ts := m.targets()
+	if len(ts) == 0 {
+		return
+	}
+	on := false
+	for _, it := range ts {
+		if !m.prog.Get(it.ID).Owned {
+			on = true
+		}
+	}
+	for _, it := range ts {
+		mk := m.prog.Get(it.ID)
+		mk.Owned = on
+		m.prog.Set(it.ID, mk)
+	}
+	switch {
+	case len(ts) == 1 && on:
+		m.say("%s — marked as in your arsenal.", ts[0].Name)
+	case len(ts) == 1:
+		m.say("%s — marked as not owned.", ts[0].Name)
+	case on:
+		m.say("%d items marked as in your arsenal.", len(ts))
+	default:
+		m.say("%d items marked as not owned.", len(ts))
+	}
+	m.save()
+	m.rebuildKeep()
+}
+
 func (m Model) current() (catalog.Item, bool) {
 	if m.cursor < 0 || m.cursor >= len(m.visible) {
 		return catalog.Item{}, false
@@ -619,24 +727,36 @@ func (m Model) current() (catalog.Item, bool) {
 // wantImage schedules a (debounced) icon load for the selected item.
 func (m Model) wantImage() tea.Cmd {
 	it, ok := m.current()
-	if !ok || it.ImageName == "" || m.imgCols == 0 || m.imgErr[it.ImageName] {
+	cols := m.wantCols()
+	if !ok || it.ImageName == "" || cols == 0 || m.imgErr[it.ImageName] {
 		return nil
 	}
-	if _, have := m.images[it.ImageName]; have {
+	if _, have := m.images[imgKey(it.ImageName, cols)]; have {
 		return nil
 	}
 	name := it.ImageName
-	return tea.Tick(120*time.Millisecond, func(time.Time) tea.Msg { return imageTick{name} })
+	return tea.Tick(120*time.Millisecond, func(time.Time) tea.Msg { return imageTick{name, cols} })
 }
 
 func fetchImage(dir, name string, cols int) tea.Cmd {
 	return func() tea.Msg {
 		path, err := catalog.Image(dir, name)
 		if err != nil {
-			return imageMsg{name: name, err: err}
+			return imageMsg{name: name, cols: cols, err: err}
 		}
 		out, err := termimg.Render(path, cols, cols/2)
-		return imageMsg{name, out, err}
+		return imageMsg{name, out, cols, err}
+	}
+}
+
+// openImage shows the full-resolution icon in the desktop's image viewer.
+func openImage(dir, name string) tea.Cmd {
+	return func() tea.Msg {
+		path, err := catalog.Image(dir, name)
+		if err == nil {
+			err = exec.Command("xdg-open", path).Start()
+		}
+		return openedMsg{err}
 	}
 }
 

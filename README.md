@@ -40,12 +40,16 @@ In the TUI press `?` for every key. The main ones:
 |---|---|
 | `space` / `m` | toggle mastered (also marks owned) |
 | `o` | toggle owned |
+| `v` | start a range selection; `space`/`o` then mark the whole range |
+| `V` | select everything shown (e.g. search "prime", then `V`, `space`) |
 | `H` | hide / show mastered items (remembered between sessions) |
 | `tab` / `1`-`0` | change category |
 | `/` | search |
 | `f` | filter: all, owned but not mastered, mastered, new |
 | `s` | sort: name, type, newest release |
-| `enter` | details · `w` opens the wiki page for drop locations |
+| `enter` | details with a large image |
+| `w` / `i` | open the wiki page (drop locations) / the full-size image |
+| `T` | theme: follow your terminal's colours (default), or Seshat's own |
 | `x` | ledger: star chart, steel path & intrinsics XP for the MR estimate |
 | `u` | sync item data now |
 
@@ -74,9 +78,19 @@ parts don't. The Plexus is missing from WFCD and is added by hand in
 - `~/.local/share/seshat/progress.json`: your marks (back this up, or use `E`)
 - `~/.cache/seshat/`: cached item data and icons (safe to delete)
 
-Icons are drawn with truecolor half-block characters, so they work in
-Alacritty, kitty, foot, WezTerm and other truecolor terminals. They show up
-when the window is tall enough (about 50+ rows).
+## Theme
+
+By default Seshat uses your terminal's 16 ANSI colours, so it follows your
+terminal theme, pywal and so on. Press `T` to switch to Seshat's own
+lapis-and-gold palette. The choice is remembered.
+
+## Images
+
+Icons are drawn with truecolor half-block characters, so they work in any
+truecolor terminal, Alacritty included. Each cell holds only two pixels, so
+icons are soft. The details view (`enter`) shows a much larger one, and `i`
+opens the full-resolution image in your image viewer. The side-pane icon
+appears once the window is about 104×50 or larger.
 
 ## Disclaimer
 
@@ -84,3 +98,7 @@ Seshat is a fan project and is not affiliated with or endorsed by Digital
 Extremes. Warframe and all related names and images are trademarks of
 Digital Extremes Ltd. Item data is provided by
 [WFCD](https://github.com/WFCD/warframe-items).
+
+## License
+
+MIT. See [LICENSE](LICENSE).

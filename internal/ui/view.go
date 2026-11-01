@@ -10,33 +10,69 @@ import (
 	"github.com/Peejidle/seshat/internal/mastery"
 )
 
-// Seshat's palette: lapis, gold leaf, papyrus, faience and red ochre.
-var (
-	lapis    = lipgloss.Color("#4A7FD0")
-	gold     = lipgloss.Color("#D9B44A")
-	papyrus  = lipgloss.Color("#E8DCC0")
-	dim      = lipgloss.Color("#7D7566")
-	faience  = lipgloss.Color("#3FC1AE")
-	ochre    = lipgloss.Color("#C4613F")
-	selectBg = lipgloss.Color("#1E2C48")
+type theme struct {
+	name                                    string
+	accent, info, text, dim, fresh, err     lipgloss.TerminalColor
+	selBg, selFg, barEmpty, onAccent, muted lipgloss.TerminalColor
+}
 
-	sTitle    = lipgloss.NewStyle().Foreground(gold).Bold(true)
-	sSub      = lipgloss.NewStyle().Foreground(dim).Italic(true)
-	sText     = lipgloss.NewStyle().Foreground(papyrus)
-	sDim      = lipgloss.NewStyle().Foreground(dim)
-	sGold     = lipgloss.NewStyle().Foreground(gold)
-	sLapis    = lipgloss.NewStyle().Foreground(lapis)
-	sNew      = lipgloss.NewStyle().Foreground(faience)
-	sErr      = lipgloss.NewStyle().Foreground(ochre)
-	sTab      = lipgloss.NewStyle().Foreground(dim).Padding(0, 1)
-	sTabOn    = lipgloss.NewStyle().Foreground(lipgloss.Color("#10131C")).Background(gold).Bold(true).Padding(0, 1)
-	sSel      = lipgloss.NewStyle().Background(selectBg)
-	sKey      = lipgloss.NewStyle().Foreground(gold)
-	sPane     = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lapis).Padding(0, 1)
-	sModal    = lipgloss.NewStyle().Border(lipgloss.DoubleBorder()).BorderForeground(gold).Padding(1, 2)
-	sBarFull  = lipgloss.NewStyle().Foreground(gold)
-	sBarEmpty = lipgloss.NewStyle().Foreground(lipgloss.Color("#3A3A44"))
+var themes = []theme{
+	// The terminal's own 16 ANSI colours, so Seshat follows whatever palette
+	// the terminal (or pywal, a Hyprland rice, …) defines.
+	{
+		name:   "terminal",
+		accent: lipgloss.Color("3"), info: lipgloss.Color("4"), text: lipgloss.NoColor{},
+		dim: lipgloss.Color("8"), fresh: lipgloss.Color("6"), err: lipgloss.Color("1"),
+		selBg: lipgloss.Color("8"), selFg: lipgloss.Color("15"), barEmpty: lipgloss.Color("8"),
+		onAccent: lipgloss.Color("0"), muted: lipgloss.Color("8"),
+	},
+	// Seshat's own palette: lapis, gold leaf, papyrus, faience and red ochre.
+	{
+		name:   "seshat",
+		accent: lipgloss.Color("#D9B44A"), info: lipgloss.Color("#4A7FD0"), text: lipgloss.Color("#E8DCC0"),
+		dim: lipgloss.Color("#7D7566"), fresh: lipgloss.Color("#3FC1AE"), err: lipgloss.Color("#C4613F"),
+		selBg: lipgloss.Color("#1E2C48"), selFg: lipgloss.Color("#E8DCC0"), barEmpty: lipgloss.Color("#3A3A44"),
+		onAccent: lipgloss.Color("#10131C"), muted: lipgloss.Color("#7D7566"),
+	},
+}
+
+func themeIndex(name string) int {
+	for i, t := range themes {
+		if t.name == name {
+			return i
+		}
+	}
+	return 0
+}
+
+var (
+	cur                                      theme
+	sTitle, sSub, sText, sDim, sGold, sLapis lipgloss.Style
+	sNew, sErr, sTab, sTabOn, sKey, sPane    lipgloss.Style
+	sModal, sBarFull, sBarEmpty              lipgloss.Style
 )
+
+func applyTheme(t theme) {
+	cur = t
+	s := lipgloss.NewStyle
+	sTitle = s().Foreground(t.accent).Bold(true)
+	sSub = s().Foreground(t.dim).Italic(true)
+	sText = s().Foreground(t.text)
+	sDim = s().Foreground(t.dim)
+	sGold = s().Foreground(t.accent)
+	sLapis = s().Foreground(t.info)
+	sNew = s().Foreground(t.fresh)
+	sErr = s().Foreground(t.err)
+	sTab = s().Foreground(t.muted).Padding(0, 1)
+	sTabOn = s().Foreground(t.onAccent).Background(t.accent).Bold(true).Padding(0, 1)
+	sKey = s().Foreground(t.accent)
+	sPane = s().Border(lipgloss.RoundedBorder()).BorderForeground(t.info).Padding(0, 1)
+	sModal = s().Border(lipgloss.DoubleBorder()).BorderForeground(t.accent).Padding(1, 2)
+	sBarFull = s().Foreground(t.accent)
+	sBarEmpty = s().Foreground(t.barEmpty)
+}
+
+func init() { applyTheme(themes[0]) }
 
 const (
 	chromeTop    = 5
@@ -49,14 +85,36 @@ func (m Model) listHeight() int { return max(1, m.height-chromeTop-chromeBottom)
 
 func (m Model) sidePane() bool { return m.width >= wideEnough }
 
-// imageCols sizes item icons to fit the detail pane's width and the window height.
-func (m Model) imageCols() int {
-	c := min(paneWidth-14, (m.height-28)*2)
-	if c < 12 {
+// paneImageCols sizes the side-pane icon to leave room for the details.
+func (m Model) paneImageCols() int {
+	if !m.sidePane() {
 		return 0
 	}
-	return c
+	return atLeast(min(paneWidth-14, (m.height-28)*2), 12)
 }
+
+// modalImageCols sizes the large icon in the full details view, which sits
+// beside the text. Bigger is sharper: each cell carries two pixels.
+func (m Model) modalImageCols() int {
+	return atLeast(min(96, m.width-paneWidth-16, (m.height-8)*2), 16)
+}
+
+// wantCols is the icon size the current screen shows.
+func (m Model) wantCols() int {
+	if m.modal == mDetail {
+		return m.modalImageCols()
+	}
+	return m.paneImageCols()
+}
+
+func atLeast(n, floor int) int {
+	if n < floor {
+		return 0
+	}
+	return n
+}
+
+func imgKey(name string, cols int) string { return fmt.Sprintf("%s@%d", name, cols) }
 
 func (m Model) View() string {
 	if m.width == 0 {
@@ -83,7 +141,11 @@ func (m Model) View() string {
 		return m.overlay(m.importView())
 	case mDetail:
 		if it, ok := m.current(); ok {
-			return m.overlay(m.detail(it, paneWidth+10))
+			body := m.detail(it, paneWidth+4, 0)
+			if c := m.modalImageCols(); c > 0 && it.ImageName != "" {
+				body = lipgloss.JoinHorizontal(lipgloss.Center, m.image(it, c, c), "   ", body)
+			}
+			return m.overlay(body)
 		}
 	}
 
@@ -95,7 +157,7 @@ func (m Model) View() string {
 	if m.sidePane() {
 		var pane string
 		if it, ok := m.current(); ok {
-			pane = m.detail(it, paneWidth-2)
+			pane = m.detail(it, paneWidth-2, m.paneImageCols())
 		}
 		pane = sPane.Width(paneWidth - 2).Height(m.listHeight() - 2).MaxHeight(m.listHeight()).Render(pane)
 		body = lipgloss.JoinHorizontal(lipgloss.Top, body, pane)
@@ -218,52 +280,73 @@ func (m Model) listView(w int) string {
 		rows = append(rows, sSub.Render("   Nothing in the archive matches."))
 	}
 	for i := m.offset; i < len(m.visible) && i < m.offset+h; i++ {
-		it := m.items[m.visible[i]]
-		mk := m.prog.Get(it.ID)
-
-		mast := sDim.Render("·")
-		if mk.Mastered {
-			mast = sGold.Render("★")
-		}
-		own := sDim.Render("○")
-		if mk.Owned {
-			own = sLapis.Render("●")
-		}
-		cursor := "  "
-		if i == m.cursor {
-			cursor = sGold.Render("▸ ")
-		}
-		name := it.Name
-		if m.newIDs[it.ID] {
-			name += " ✦"
-		}
-		nameStyle := sText
-		if mk.Mastered {
-			nameStyle = sDim
-		}
-		typ := it.Type
-		if it.Prime {
-			typ += " ⁂"
-		}
-		row := fmt.Sprintf("%s  %s %s  %s %s %s %s",
-			cursor, mast, own,
-			nameStyle.Render(pad(trunc(name, nameW), nameW)),
-			sDim.Render(pad(trunc(typ, 16), 16)),
-			sDim.Render(fmt.Sprintf("%4s", req(it.MasteryReq))),
-			sGold.Render(fmt.Sprintf("%7s", commas(it.MasteryXP()))))
-		if m.newIDs[it.ID] {
-			row = strings.Replace(row, "✦", sNew.Render("✦"), 1)
-		}
-		row = pad(trunc(row, w), w)
-		if i == m.cursor {
-			row = sSel.Render(row)
-		}
-		rows = append(rows, row)
+		rows = append(rows, m.row(i, w, nameW))
 	}
 	for len(rows) < h {
 		rows = append(rows, strings.Repeat(" ", w))
 	}
 	return strings.Join(rows, "\n")
+}
+
+// row renders one list line. Highlighted rows (cursor or bulk selection) put
+// the background on every segment, since an outer style can't survive the
+// resets inside already-styled text.
+func (m Model) row(i, w, nameW int) string {
+	it := m.items[m.visible[i]]
+	mk := m.prog.Get(it.ID)
+	text, dim, gold, info, fresh := sText, sDim, sGold, sLapis, sNew
+	lit := i == m.cursor || m.inSelection(i)
+	if lit {
+		bg := func(s lipgloss.Style) lipgloss.Style { return s.Background(cur.selBg) }
+		text = bg(text.Foreground(cur.selFg))
+		dim = text // dim-on-highlight is unreadable in many palettes
+		gold, info, fresh = bg(gold), bg(info), bg(fresh)
+	}
+
+	cursor := "  "
+	switch {
+	case i == m.cursor:
+		cursor = "▸ "
+	case m.inSelection(i):
+		cursor = "┃ "
+	}
+	mast, own := dim.Render("·"), dim.Render("○")
+	if mk.Mastered {
+		mast = gold.Render("★")
+	}
+	if mk.Owned {
+		own = info.Render("●")
+	}
+	nameStyle := text
+	if mk.Mastered && !lit {
+		nameStyle = dim
+	}
+	name := trunc(it.Name, nameW)
+	if m.newIDs[it.ID] {
+		name = trunc(it.Name, nameW-2)
+	}
+	typ := it.Type
+	if it.Prime {
+		typ += " ⁂"
+	}
+
+	var b strings.Builder
+	b.WriteString(gold.Render(cursor) + text.Render("  ") + mast + text.Render(" ") + own + text.Render("  "))
+	b.WriteString(nameStyle.Render(name))
+	used := lipgloss.Width(name)
+	if m.newIDs[it.ID] {
+		b.WriteString(fresh.Render(" ✦"))
+		used += 2
+	}
+	b.WriteString(text.Render(strings.Repeat(" ", max(0, nameW-used)+1)))
+	b.WriteString(dim.Render(pad(trunc(typ, 16), 16)) + text.Render(" "))
+	b.WriteString(dim.Render(fmt.Sprintf("%4s", req(it.MasteryReq))) + text.Render(" "))
+	b.WriteString(gold.Render(fmt.Sprintf("%7s", commas(it.MasteryXP()))))
+	out := trunc(b.String(), w)
+	if d := w - lipgloss.Width(out); d > 0 {
+		out += text.Render(strings.Repeat(" ", d))
+	}
+	return out
 }
 
 func req(n int) string {
@@ -280,12 +363,23 @@ func pad(s string, w int) string {
 	return s
 }
 
-func (m Model) detail(it catalog.Item, w int) string {
+// image renders an item's icon, or a placeholder of the same footprint while
+// it loads, so the layout doesn't jump.
+func (m Model) image(it catalog.Item, cols, boxW int) string {
+	if img := m.images[imgKey(it.ImageName, cols)]; img != "" {
+		return lipgloss.PlaceHorizontal(boxW, lipgloss.Center, img)
+	}
+	msg := "summoning likeness…"
+	if m.imgErr[it.ImageName] {
+		msg = "no likeness in the archive"
+	}
+	return lipgloss.Place(boxW, cols/2, lipgloss.Center, lipgloss.Center, sSub.Render(msg))
+}
+
+func (m Model) detail(it catalog.Item, w, imgCols int) string {
 	var b strings.Builder
-	if img, ok := m.images[it.ImageName]; ok && img != "" {
-		b.WriteString(lipgloss.PlaceHorizontal(w-2, lipgloss.Center, img) + "\n\n")
-	} else if m.imgCols > 0 && it.ImageName != "" && !m.imgErr[it.ImageName] {
-		b.WriteString(lipgloss.PlaceHorizontal(w-2, lipgloss.Center, sSub.Render("summoning likeness…")) + "\n\n")
+	if imgCols > 0 && it.ImageName != "" && !m.imgErr[it.ImageName] {
+		b.WriteString(m.image(it, imgCols, w-2) + "\n\n")
 	}
 
 	title := sTitle.Render(it.Name)
@@ -339,7 +433,10 @@ func (m Model) detail(it catalog.Item, w int) string {
 		b.WriteString("\n" + sSub.Width(w-2).Render(it.Description) + "\n")
 	}
 	if it.WikiURL != "" {
-		b.WriteString("\n" + sDim.Render("press ") + sKey.Render("w") + sDim.Render(" for drop locations on the wiki"))
+		b.WriteString("\n" + sKey.Render("w") + sDim.Render(" wiki & drop locations"))
+	}
+	if it.ImageName != "" {
+		b.WriteString(sDim.Render(" · ") + sKey.Render("i") + sDim.Render(" full-size image"))
 	}
 	return b.String()
 }
@@ -362,7 +459,7 @@ func (m Model) statusLine() string {
 func (m Model) hints() string {
 	k := func(key, what string) string { return sKey.Render(key) + sDim.Render(" "+what) }
 	return trunc(" "+strings.Join([]string{
-		k("space", "mastered"), k("o", "owned"), k("H", "hide mastered"), k("/", "search"), k("f", "filter"),
+		k("space", "mastered"), k("o", "owned"), k("v", "select"), k("H", "hide mastered"), k("/", "search"), k("f", "filter"),
 		k("s", "sort"), k("⇥", "category"), k("enter", "details"), k("x", "ledger"),
 		k("u", "sync"), k("?", "help"), k("q", "quit"),
 	}, sDim.Render(" · ")), m.width)
@@ -376,13 +473,17 @@ func helpView() string {
 	rows := [][2]string{
 		{"space / m", "toggle mastered (also marks owned)"},
 		{"o", "toggle owned"},
+		{"v", "start/stop a range selection; space/o mark it all"},
+		{"V", "select everything shown (after a search or filter)"},
 		{"↑↓ j k", "move · pgup/pgdn · g/G top/bottom"},
 		{"⇥ ⇤ ← →", "change category · 1-0 jump to category"},
 		{"/", "search names and types · esc clears"},
 		{"H", "hide / show mastered items (remembered)"},
 		{"f", "cycle filter: all, owned, mastered, new"},
 		{"s", "cycle sort: name, type, newest"},
-		{"enter", "full details · w opens the wiki page"},
+		{"enter", "full details with a large image"},
+		{"w / i", "open the wiki page / full-size image"},
+		{"T", "theme: follow terminal colours, or Seshat's own"},
 		{"x", "ledger: star chart, steel path & intrinsic XP"},
 		{"u", "sync the archive with WFCD now"},
 		{"E", "export records to ~/seshat-backup-DATE.json"},
