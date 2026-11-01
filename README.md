@@ -86,18 +86,17 @@ lapis-and-gold palette. The choice is remembered.
 
 ## Images
 
-Icons are drawn with truecolor half-block characters, so they work in any
-truecolor terminal, Alacritty included. Each cell holds only two pixels, so
-icons are soft. The details view (`enter`) shows a much larger one, and `i`
-opens the full-resolution image in your image viewer. The side-pane icon
-appears once the window is about 104×50 or larger.
+Seshat picks the best way your terminal can draw item icons:
 
-## Disclaimer
+- **kitty / Ghostty:** real, full-resolution images via the kitty graphics
+  protocol (Unicode placeholders, so they redraw cleanly with the TUI).
+- **Everything else** (Alacritty, foot, WezTerm, …): truecolor half-block
+  characters. They work anywhere but are soft, since each cell holds only two
+  pixels. Inside tmux/screen Seshat also uses this mode.
 
-Seshat is a fan project and is not affiliated with or endorsed by Digital
-Extremes. Warframe and all related names and images are trademarks of
-Digital Extremes Ltd. Item data is provided by
-[WFCD](https://github.com/WFCD/warframe-items).
+Override with `SESHAT_IMAGES=kitty|blocks|off`. The details view (`enter`)
+shows a large icon, and `i` opens the full-size file in your image viewer.
+The side-pane icon appears once the window is about 104×50 or larger.
 
 ## License
 

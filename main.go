@@ -13,6 +13,7 @@ import (
 	"github.com/Peejidle/seshat/internal/catalog"
 	"github.com/Peejidle/seshat/internal/mastery"
 	"github.com/Peejidle/seshat/internal/store"
+	"github.com/Peejidle/seshat/internal/termimg"
 	"github.com/Peejidle/seshat/internal/ui"
 )
 
@@ -39,7 +40,9 @@ func main() {
 	args := os.Args[1:]
 	if len(args) == 0 {
 		p := tea.NewProgram(ui.New(paths, prog), tea.WithAltScreen())
-		if _, err := p.Run(); err != nil {
+		_, err := p.Run()
+		termimg.Cleanup()
+		if err != nil {
 			die(err)
 		}
 		return

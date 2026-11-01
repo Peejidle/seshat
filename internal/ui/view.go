@@ -8,6 +8,7 @@ import (
 
 	"github.com/Peejidle/seshat/internal/catalog"
 	"github.com/Peejidle/seshat/internal/mastery"
+	"github.com/Peejidle/seshat/internal/termimg"
 )
 
 type theme struct {
@@ -101,6 +102,9 @@ func (m Model) modalImageCols() int {
 
 // wantCols is the icon size the current screen shows.
 func (m Model) wantCols() int {
+	if m.imgMode == termimg.Off {
+		return 0
+	}
 	if m.modal == mDetail {
 		return m.modalImageCols()
 	}
@@ -134,7 +138,7 @@ func (m Model) View() string {
 
 	switch m.modal {
 	case mHelp:
-		return m.overlay(helpView())
+		return m.overlay(m.helpView())
 	case mLedger:
 		return m.overlay(m.ledgerView())
 	case mImport:
@@ -469,7 +473,7 @@ func (m Model) overlay(content string) string {
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, sModal.Render(content))
 }
 
-func helpView() string {
+func (m Model) helpView() string {
 	rows := [][2]string{
 		{"space / m", "toggle mastered (also marks owned)"},
 		{"o", "toggle owned"},
@@ -496,7 +500,8 @@ func helpView() string {
 		b.WriteString(sKey.Render(pad(r[0], 12)) + sText.Render(r[1]) + "\n")
 	}
 	b.WriteString("\n" + sSub.Render("★ mastered  ● owned  ✦ new since last sync  ⁂ prime") + "\n")
-	b.WriteString(sSub.Render("Item data: WFCD warframe-items (community-maintained, refreshed every 6h)."))
+	b.WriteString(sSub.Render("Item data: WFCD warframe-items (community-maintained, refreshed every 6h).") + "\n")
+	b.WriteString(sSub.Render(fmt.Sprintf("Images: %s mode (set SESHAT_IMAGES=kitty|blocks|off to override).", m.imgMode)))
 	return b.String()
 }
 

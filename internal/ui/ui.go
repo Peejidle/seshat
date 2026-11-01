@@ -92,8 +92,9 @@ type Model struct {
 	ledgerAt int
 	pathIn   textinput.Model
 
-	images map[string]string // imgKey(name, cols) -> rendered, "" while pending
-	imgErr map[string]bool   // imageName -> failed to download or decode
+	imgMode termimg.Mode
+	images  map[string]string // imgKey(name, cols) -> rendered, "" while pending
+	imgErr  map[string]bool   // imageName -> failed to download or decode
 
 	status    string
 	statusErr bool
@@ -134,7 +135,7 @@ func New(paths Paths, prog *store.Progress) Model {
 
 	m := Model{
 		paths: paths, prog: prog, search: s, pathIn: p,
-		newIDs: map[string]bool{}, anchor: -1,
+		newIDs: map[string]bool{}, anchor: -1, imgMode: termimg.Detect(),
 		images: map[string]string{}, imgErr: map[string]bool{},
 	}
 	applyTheme(themes[themeIndex(prog.Settings.Theme)])
@@ -220,7 +221,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			key := imgKey(msg.name, msg.cols)
 			if _, have := m.images[key]; !have {
 				m.images[key] = ""
-				return m, fetchImage(m.paths.Images, msg.name, msg.cols)
+				return m, fetchImage(m.paths.Images, msg.name, msg.cols, m.imgMode)
 			}
 		}
 		return m, nil
@@ -738,13 +739,17 @@ func (m Model) wantImage() tea.Cmd {
 	return tea.Tick(120*time.Millisecond, func(time.Time) tea.Msg { return imageTick{name, cols} })
 }
 
-func fetchImage(dir, name string, cols int) tea.Cmd {
+func fetchImage(dir, name string, cols int, mode termimg.Mode) tea.Cmd {
 	return func() tea.Msg {
 		path, err := catalog.Image(dir, name)
 		if err != nil {
 			return imageMsg{name: name, cols: cols, err: err}
 		}
-		out, err := termimg.Render(path, cols, cols/2)
+		render := termimg.Render
+		if mode == termimg.Kitty {
+			render = termimg.RenderKitty
+		}
+		out, err := render(path, cols, cols/2)
 		return imageMsg{name, out, cols, err}
 	}
 }
