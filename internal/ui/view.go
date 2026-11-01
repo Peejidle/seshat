@@ -8,6 +8,7 @@ import (
 
 	"github.com/Peejidle/seshat/internal/catalog"
 	"github.com/Peejidle/seshat/internal/mastery"
+	"github.com/Peejidle/seshat/internal/profile"
 	"github.com/Peejidle/seshat/internal/termimg"
 )
 
@@ -492,6 +493,7 @@ func (m Model) helpView() string {
 		{"u", "sync the archive with WFCD now"},
 		{"E", "export records to ~/seshat-backup-DATE.json"},
 		{"I", "import records from a backup"},
+		{"P", "import mastery from your saved Warframe profile"},
 		{"q", "quit"},
 	}
 	var b strings.Builder
@@ -537,6 +539,22 @@ func (m Model) ledgerView() string {
 }
 
 func (m Model) importView() string {
+	if m.fromProf {
+		step := func(n, s string) string { return sGold.Render(n+" ") + sText.Render(s) + "\n" }
+		return sTitle.Render("Import mastery from your Warframe profile") + "\n" +
+			sSub.Render("Seshat never contacts DE. You fetch your public profile once, yourself.") + "\n\n" +
+			step("1", "Find your account ID: log in at warframe.com, press F12 →") +
+			sDim.Render("    Storage/Application → Cookies → user-info → the 24-character user_id") + "\n" +
+			step("2", "Open this in your browser, with your ID on the end, and save the page:") +
+			sLapis.Render("    "+profile.URL+"<ID>") + "\n" +
+			sDim.Render("    Open it once and check the ID: repeated or bad requests can get your") + "\n" +
+			sDim.Render("    IP blocked from the game for a while. (Consoles: api-ps4, api-xb1, api-swi.)") + "\n" +
+			step("3", "Point Seshat at the saved file:") + "\n" +
+			m.pathIn.View() + "\n\n" +
+			sDim.Render("Marks maxed items as mastered and fills in intrinsics. It never unmarks") + "\n" +
+			sDim.Render("anything, and leaves owned alone (the profile includes sold items).") + "\n\n" +
+			sDim.Render("enter import · esc cancel")
+	}
 	return sTitle.Render("Restore records") + "\n" +
 		sSub.Render("This replaces your current marks and ledger.") + "\n\n" +
 		m.pathIn.View() + "\n\n" + sDim.Render("enter import · esc cancel")

@@ -12,6 +12,7 @@ import (
 
 	"github.com/Peejidle/seshat/internal/catalog"
 	"github.com/Peejidle/seshat/internal/mastery"
+	"github.com/Peejidle/seshat/internal/profile"
 	"github.com/Peejidle/seshat/internal/store"
 	"github.com/Peejidle/seshat/internal/termimg"
 	"github.com/Peejidle/seshat/internal/ui"
@@ -25,6 +26,9 @@ usage:
   seshat stats           print mastery totals
   seshat export FILE     back up your records
   seshat import FILE     restore records from a backup
+  seshat import-profile FILE
+                         mark mastery from your saved Warframe profile
+                         (see README: "Importing from your profile")
 `
 
 func main() {
@@ -64,6 +68,10 @@ func main() {
 			die(err)
 		}
 		fmt.Printf("records written to %s\n", args[1])
+	case args[0] == "import-profile" && len(args) == 2:
+		if err := importProfile(paths, prog, args[1]); err != nil {
+			die(err)
+		}
 	case args[0] == "import" && len(args) == 2:
 		if err := prog.Import(args[1]); err != nil {
 			die(err)
@@ -78,13 +86,38 @@ func main() {
 	}
 }
 
-func stats(paths ui.Paths, prog *store.Progress) error {
+func loadItems(paths ui.Paths) ([]catalog.Item, error) {
 	if !catalog.HasCache(paths.Data) {
 		if _, err := catalog.Refresh(paths.Data); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	items, err := catalog.Load(paths.Data)
+	return catalog.Load(paths.Data)
+}
+
+func importProfile(paths ui.Paths, prog *store.Progress, file string) error {
+	b, err := os.ReadFile(file)
+	if err != nil {
+		return err
+	}
+	p, err := profile.Parse(b)
+	if err != nil {
+		return err
+	}
+	items, err := loadItems(paths)
+	if err != nil {
+		return err
+	}
+	r := profile.Apply(p, items, prog)
+	if err := prog.Save(paths.Progress); err != nil {
+		return err
+	}
+	fmt.Println(profile.Summary(r))
+	return nil
+}
+
+func stats(paths ui.Paths, prog *store.Progress) error {
+	items, err := loadItems(paths)
 	if err != nil {
 		return err
 	}

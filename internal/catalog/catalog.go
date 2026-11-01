@@ -94,7 +94,7 @@ type rawItem struct {
 // Supplements are masterable items WFCD does not ship at all.
 var Supplements = []Item{
 	{
-		ID: "seshat:plexus", Name: "Plexus", Category: CatVehicles, Type: "Railjack",
+		ID: "/Lotus/Types/Game/CrewShip/RailJack/DefaultHarness", Name: "Plexus", Category: CatVehicles, Type: "Railjack",
 		MaxRank: 30, XPPerRank: 200,
 		Description: "Railjack's modular loadout. Ranks like a Warframe for mastery.",
 		WikiURL:     "https://wiki.warframe.com/w/Plexus",

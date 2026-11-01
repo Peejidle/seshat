@@ -16,6 +16,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Peejidle/seshat/internal/catalog"
+	"github.com/Peejidle/seshat/internal/profile"
 	"github.com/Peejidle/seshat/internal/store"
 	"github.com/Peejidle/seshat/internal/termimg"
 )
@@ -91,6 +92,7 @@ type Model struct {
 	ledger   []textinput.Model
 	ledgerAt int
 	pathIn   textinput.Model
+	fromProf bool // the import modal reads a Warframe profile, not a backup
 
 	imgMode termimg.Mode
 	images  map[string]string // imgKey(name, cols) -> rendered, "" while pending
@@ -444,9 +446,13 @@ func (m Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m.say("Records copied to %s", path)
 		}
-	case "I":
-		m.modal = mImport
+	case "I", "P":
+		m.modal, m.fromProf = mImport, k.String() == "P"
 		m.pathIn.SetValue("")
+		if m.fromProf {
+			m.pathIn.SetValue(guessProfilePath())
+			m.pathIn.CursorEnd()
+		}
 		return m, m.pathIn.Focus()
 	case "?":
 		m.modal = mHelp
@@ -523,7 +529,12 @@ func (m Model) importKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			home, _ := os.UserHomeDir()
 			path = filepath.Join(home, path[2:])
 		}
-		if err := m.prog.Import(path); err != nil {
+		if m.fromProf {
+			if err := m.importProfile(path); err != nil {
+				m.fail("profile import failed: %v", err)
+				return m, nil // keep the prompt open to fix the path
+			}
+		} else if err := m.prog.Import(path); err != nil {
 			m.fail("import failed: %v", err)
 		} else {
 			m.save()
@@ -536,6 +547,44 @@ func (m Model) importKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.pathIn, cmd = m.pathIn.Update(k)
 	return m, cmd
+}
+
+func (m *Model) importProfile(path string) error {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	p, err := profile.Parse(b)
+	if err != nil {
+		return err
+	}
+	r := profile.Apply(p, m.items, m.prog)
+	m.save()
+	m.say("%s", profile.Summary(r))
+	m.rebuildKeep()
+	return nil
+}
+
+// guessProfilePath suggests the newest profile the browser saved to
+// ~/Downloads, since browsers name it after the endpoint.
+func guessProfilePath() string {
+	home, _ := os.UserHomeDir()
+	dir := filepath.Join(home, "Downloads")
+	entries, _ := os.ReadDir(dir)
+	var best string
+	var newest time.Time
+	for _, e := range entries {
+		if !strings.HasPrefix(strings.ToLower(e.Name()), "getprofileviewingdata") {
+			continue
+		}
+		if info, err := e.Info(); err == nil && info.ModTime().After(newest) {
+			best, newest = e.Name(), info.ModTime()
+		}
+	}
+	if best == "" {
+		return "~/Downloads/"
+	}
+	return "~/Downloads/" + best
 }
 
 // ---- list state -----------------------------------------------------------

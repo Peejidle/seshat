@@ -32,6 +32,8 @@ seshat update          sync item data now
 seshat stats           print mastery totals
 seshat export FILE     back up your records
 seshat import FILE     restore records from a backup
+seshat import-profile FILE
+                       mark mastery from your saved Warframe profile
 ```
 
 In the TUI press `?` for every key. The main ones:
@@ -52,6 +54,35 @@ In the TUI press `?` for every key. The main ones:
 | `T` | theme: follow your terminal's colours (default), or Seshat's own |
 | `x` | ledger: star chart, steel path & intrinsics XP for the MR estimate |
 | `u` | sync item data now |
+| `P` | import mastery from your saved Warframe profile |
+
+## Importing from your profile
+
+Instead of checking off hundreds of items by hand, you can import mastery
+from Warframe's public profile, the same data the in-game profile viewer
+shows. **Seshat never contacts DE's servers.** You fetch the profile once,
+in your own browser, and Seshat reads the saved file. DE rate-limits that
+endpoint hard (bad or repeated requests can block your IP from the game for
+a while) and hasn't sanctioned third-party use, so the one request stays
+yours.
+
+1. **Find your account ID.** Log in at warframe.com, press F12 and open
+   Storage (Firefox) or Application (Chrome) → Cookies →
+   `https://www.warframe.com` → `user-info`. Copy the 24-character
+   `user_id`. (The old `warframe.com/api/user-data` page and the `EE.log`
+   method no longer work.)
+2. **Save your profile.** Open this once, with your ID on the end, and save
+   the page (`Ctrl+S`; in Firefox, the *Raw Data* tab → *Save*):
+   `https://api.warframe.com/cdn/getProfileViewingData.php?playerId=<ID>`
+   Consoles use `api-ps4`, `api-xb1`, `api-swi`, `api-mob` or `api-and` in
+   place of `api`.
+3. **Import it:** press `P` in Seshat (it suggests the newest file in
+   `~/Downloads`), or run `seshat import-profile FILE`.
+
+Items at max rank are marked mastered, and Railjack/Drifter intrinsics are
+filled into the ledger. The import never unmarks anything and leaves *owned*
+alone, since the profile also lists items you've sold. Star Chart and Steel
+Path XP still go in the ledger by hand.
 
 ## How new items show up
 

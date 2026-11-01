@@ -72,6 +72,11 @@ func parse(b []byte) (*Progress, error) {
 	if p.Seen == nil {
 		p.Seen = map[string]bool{}
 	}
+	// The Plexus briefly used a made-up ID before its real one was known.
+	if mk, ok := p.Marks["seshat:plexus"]; ok {
+		p.Marks["/Lotus/Types/Game/CrewShip/RailJack/DefaultHarness"] = mk
+		delete(p.Marks, "seshat:plexus")
+	}
 	return p, nil
 }
 
