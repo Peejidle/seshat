@@ -479,6 +479,7 @@ func (m *Model) extraPtrs() []*int {
 
 func (m *Model) openLedger() {
 	m.modal, m.ledgerAt = mLedger, 0
+	m.status = ""
 	m.ledger = make([]textinput.Model, len(ledgerFields))
 	for i, p := range m.extraPtrs() {
 		t := textinput.New()
@@ -495,21 +496,27 @@ func (m Model) ledgerKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch k.String() {
 	case "esc":
 		m.modal = mNone
-		m.say("Ledger unchanged.")
+		m.say("Ledger closed.")
 		return m, nil
 	case "enter":
-		for i, p := range m.extraPtrs() {
+		// Save and move on, so several fields can be filled in one visit.
+		vals := make([]int, len(m.ledger))
+		for i := range m.ledger {
 			v, err := strconv.Atoi(strings.ReplaceAll(strings.TrimSpace(m.ledger[i].Value()), ",", ""))
 			if err != nil || v < 0 {
 				m.fail("%s must be a whole number", ledgerFields[i])
 				return m, nil
 			}
-			*p = v
+			vals[i] = v
 		}
-		m.save()
-		m.modal = mNone
-		m.say("Ledger inscribed.")
-		return m, nil
+		for i, p := range m.extraPtrs() {
+			*p = vals[i]
+		}
+		m.say("✓ Ledger inscribed.")
+		m.save() // replaces the message if writing fails
+		m.ledger[m.ledgerAt].Blur()
+		m.ledgerAt = (m.ledgerAt + 1) % len(m.ledger)
+		return m, m.ledger[m.ledgerAt].Focus()
 	case "tab", "down":
 		m.ledger[m.ledgerAt].Blur()
 		m.ledgerAt = (m.ledgerAt + 1) % len(m.ledger)

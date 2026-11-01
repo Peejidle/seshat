@@ -582,7 +582,10 @@ func (m Model) ledgerView() string {
 	b.WriteString(fmt.Sprintf("\n  %s %s  %s\n",
 		sText.Render(pad("Estimated total", 18)), sGold.Bold(true).Render(commas(xp)+" xp"),
 		sGold.Render(mastery.Label(rank))))
-	b.WriteString("\n" + sDim.Render("enter save · tab next field · esc cancel"))
+	b.WriteString("\n" + sDim.Render("enter save & next · tab/↑↓ move · esc close (drops unsaved edits)"))
+	if st := m.statusLine(); st != "" {
+		b.WriteString("\n" + st)
+	}
 	return b.String()
 }
 

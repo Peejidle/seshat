@@ -95,3 +95,22 @@ func TestParts(t *testing.T) {
 		t.Errorf("a should fill parts only, not resources: %v", m.prog.Parts)
 	}
 }
+
+func TestLedgerStaysOpen(t *testing.T) {
+	m := press(testModel(t), "x")
+	m.ledger[0].SetValue("1,000")
+	mm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = mm.(Model)
+	if m.modal != mLedger || m.ledgerAt != 1 || m.prog.Extra.StarChart != 1000 {
+		t.Fatalf("after enter: modal %v, field %d, star chart %d", m.modal, m.ledgerAt, m.prog.Extra.StarChart)
+	}
+	m.ledger[1].SetValue("abc")
+	mm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if m = mm.(Model); !m.statusErr || m.ledgerAt != 1 {
+		t.Errorf("bad number should be rejected in place")
+	}
+	mm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if m = mm.(Model); m.modal != mNone || m.prog.Extra.StarChart != 1000 {
+		t.Errorf("esc should close and keep what was saved")
+	}
+}
