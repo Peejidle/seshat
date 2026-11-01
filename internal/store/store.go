@@ -13,6 +13,9 @@ import (
 type Mark struct {
 	Owned    bool `json:"owned,omitempty"`
 	Mastered bool `json:"mastered,omitempty"`
+	// Rank is the highest rank reached on an item that isn't mastered, e.g. a
+	// Coda weapon at 30 of 40. Partial ranks still earn mastery XP.
+	Rank int `json:"rank,omitempty"`
 }
 
 // ExtraXP is mastery from sources Seshat can't enumerate, entered by hand.

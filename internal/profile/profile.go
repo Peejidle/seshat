@@ -104,7 +104,7 @@ type Result struct {
 	Name              string
 	NewlyMastered     int
 	AlreadyMastered   int
-	Partial           int // levelled but below max rank
+	Partial           int // levelled but below max rank; their rank is kept
 	Railjack, Drifter int // intrinsic ranks
 }
 
@@ -119,9 +119,13 @@ func Apply(p *Profile, items []catalog.Item, prog *store.Progress) Result {
 			continue
 		}
 		mk := prog.Get(it.ID)
-		switch {
-		case Level(xp, it.XPPerRank, it.MaxRank) < it.MaxRank:
+		switch lvl := Level(xp, it.XPPerRank, it.MaxRank); {
+		case lvl < it.MaxRank:
 			res.Partial++
+			if !mk.Mastered && lvl > mk.Rank {
+				mk.Rank = lvl
+				prog.Set(it.ID, mk)
+			}
 		case mk.Mastered:
 			res.AlreadyMastered++
 		default:
@@ -140,7 +144,7 @@ func Apply(p *Profile, items []catalog.Item, prog *store.Progress) Result {
 
 // Summary is a one-line report of an import.
 func Summary(r Result) string {
-	s := fmt.Sprintf("Profile of %s read: %d newly mastered, %d already marked, %d levelled but not maxed.",
+	s := fmt.Sprintf("Profile of %s read: %d newly mastered, %d already marked, %d in progress (rank kept, partial XP counted).",
 		r.Name, r.NewlyMastered, r.AlreadyMastered, r.Partial)
 	if r.Railjack+r.Drifter > 0 {
 		s += fmt.Sprintf(" Intrinsics: %d Railjack, %d Drifter.", r.Railjack, r.Drifter)

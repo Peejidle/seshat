@@ -61,6 +61,15 @@ type Item struct {
 // MasteryXP is the account mastery granted by ranking the item to max.
 func (it Item) MasteryXP() int { return it.MaxRank * it.XPPerRank }
 
+// EarnedXP is the mastery an item has granted so far: all of it once
+// mastered, otherwise whatever its highest rank was worth.
+func (it Item) EarnedXP(mastered bool, rank int) int {
+	if mastered {
+		return it.MasteryXP()
+	}
+	return min(max(rank, 0), it.MaxRank) * it.XPPerRank
+}
+
 // SourceFiles are the WFCD category files Seshat consumes.
 var SourceFiles = []string{
 	"Warframes", "Primary", "Secondary", "Melee", "Sentinels", "SentinelWeapons",

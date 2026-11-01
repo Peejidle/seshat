@@ -36,13 +36,14 @@ type filterMode int
 const (
 	fAll filterMode = iota
 	fOwnedUnmastered
+	fInProgress
 	fMastered
 	fNew
 	numFilters
 )
 
 func (f filterMode) String() string {
-	return [...]string{"all", "owned · not mastered", "mastered", "new"}[f]
+	return [...]string{"all", "owned · not mastered", "in progress", "mastered", "new"}[f]
 }
 
 type sortMode int
@@ -610,6 +611,10 @@ func (m *Model) rebuild() {
 			if !mk.Owned || mk.Mastered {
 				continue
 			}
+		case fInProgress:
+			if mk.Mastered || mk.Rank == 0 {
+				continue
+			}
 		case fMastered:
 			if !mk.Mastered {
 				continue
@@ -816,7 +821,7 @@ func openImage(dir, name string) tea.Cmd {
 
 // ---- stats ----------------------------------------------------------------
 
-type tally struct{ total, owned, mastered, xp, xpTotal int }
+type tally struct{ total, owned, mastered, partial, xp, xpTotal int }
 
 func (m Model) tallyFor(cat catalog.Category) tally {
 	var t tally
@@ -832,8 +837,10 @@ func (m Model) tallyFor(cat catalog.Category) tally {
 		}
 		if mk.Mastered {
 			t.mastered++
-			t.xp += it.MasteryXP()
+		} else if mk.Rank > 0 {
+			t.partial++
 		}
+		t.xp += it.EarnedXP(mk.Mastered, mk.Rank)
 	}
 	return t
 }

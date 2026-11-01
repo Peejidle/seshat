@@ -47,7 +47,7 @@ In the TUI press `?` for every key. The main ones:
 | `H` | hide / show mastered items (remembered between sessions) |
 | `tab` / `1`-`0` | change category |
 | `/` | search |
-| `f` | filter: all, owned but not mastered, mastered, new |
+| `f` | filter: all, owned but not mastered, in progress, mastered, new |
 | `s` | sort: name, type, newest release |
 | `enter` | details with a large image |
 | `w` / `i` | open the wiki page (drop locations) / the full-size image |
@@ -79,8 +79,11 @@ yours.
 3. **Import it:** press `P` in Seshat (it suggests the newest file in
    `~/Downloads`), or run `seshat import-profile FILE`.
 
-Items at max rank are marked mastered, and Railjack/Drifter intrinsics are
-filled into the ledger. The import never unmarks anything and leaves *owned*
+Items at max rank are marked mastered. Items below it, such as a Kuva, Tenet
+or Coda weapon at rank 30 of 40 or something you levelled and sold, are
+marked in progress (◐) with their rank, and the XP they've earned counts
+toward your MR estimate. Railjack/Drifter intrinsics are filled into the
+ledger. The import never unmarks anything and leaves *owned*
 alone, since the profile also lists items you've sold. Star Chart and Steel
 Path XP still go in the ledger by hand.
 

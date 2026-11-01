@@ -318,6 +318,8 @@ func (m Model) row(i, w, nameW int) string {
 	mast, own := dim.Render("·"), dim.Render("○")
 	if mk.Mastered {
 		mast = gold.Render("★")
+	} else if mk.Rank > 0 {
+		mast = gold.Render("◐")
 	}
 	if mk.Owned {
 		own = info.Render("●")
@@ -333,6 +335,9 @@ func (m Model) row(i, w, nameW int) string {
 	typ := it.Type
 	if it.Prime {
 		typ += " ⁂"
+	}
+	if !mk.Mastered && mk.Rank > 0 {
+		typ = fmt.Sprintf("%s %d/%d", typ, mk.Rank, it.MaxRank)
 	}
 
 	var b strings.Builder
@@ -401,8 +406,16 @@ func (m Model) detail(it catalog.Item, w, imgCols int) string {
 		}
 		return sDim.Render(no)
 	}
-	b.WriteString(state(mk.Mastered, "★ Mastered", "· Not mastered") + "   " +
-		state(mk.Owned, "● Owned", "○ Not owned") + "\n\n")
+	mastery := state(mk.Mastered, "★ Mastered", "· Not mastered")
+	if !mk.Mastered && mk.Rank > 0 {
+		mastery = sGold.Render(fmt.Sprintf("◐ Rank %d of %d", mk.Rank, it.MaxRank))
+	}
+	b.WriteString(mastery + "   " + state(mk.Owned, "● Owned", "○ Not owned") + "\n")
+	if !mk.Mastered && mk.Rank > 0 {
+		left := it.MasteryXP() - it.EarnedXP(false, mk.Rank)
+		b.WriteString(sDim.Render(fmt.Sprintf("%s XP still to earn", commas(left))) + "\n")
+	}
+	b.WriteString("\n")
 
 	kv := func(k, v string) {
 		if v != "" {
@@ -484,7 +497,7 @@ func (m Model) helpView() string {
 		{"⇥ ⇤ ← →", "change category · 1-0 jump to category"},
 		{"/", "search names and types · esc clears"},
 		{"H", "hide / show mastered items (remembered)"},
-		{"f", "cycle filter: all, owned, mastered, new"},
+		{"f", "cycle filter: all, owned, in progress, mastered, new"},
 		{"s", "cycle sort: name, type, newest"},
 		{"enter", "full details with a large image"},
 		{"w / i", "open the wiki page / full-size image"},
@@ -501,7 +514,7 @@ func (m Model) helpView() string {
 	for _, r := range rows {
 		b.WriteString(sKey.Render(pad(r[0], 12)) + sText.Render(r[1]) + "\n")
 	}
-	b.WriteString("\n" + sSub.Render("★ mastered  ● owned  ✦ new since last sync  ⁂ prime") + "\n")
+	b.WriteString("\n" + sSub.Render("★ mastered  ◐ in progress  ● owned  ✦ new since last sync  ⁂ prime") + "\n")
 	b.WriteString(sSub.Render("Item data: WFCD warframe-items (community-maintained, refreshed every 6h).") + "\n")
 	b.WriteString(sSub.Render(fmt.Sprintf("Images: %s mode (set SESHAT_IMAGES=kitty|blocks|off to override).", m.imgMode)))
 	return b.String()

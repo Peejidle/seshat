@@ -132,12 +132,14 @@ func stats(paths ui.Paths, prog *store.Progress) error {
 		}
 		c.n++
 		all.n++
-		if prog.Get(it.ID).Mastered {
+		mk := prog.Get(it.ID)
+		if mk.Mastered {
 			c.m++
-			c.xp += it.MasteryXP()
 			all.m++
-			all.xp += it.MasteryXP()
 		}
+		xp := it.EarnedXP(mk.Mastered, mk.Rank)
+		c.xp += xp
+		all.xp += xp
 	}
 	for _, cat := range catalog.Categories {
 		c := per[cat]

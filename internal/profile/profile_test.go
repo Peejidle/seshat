@@ -44,8 +44,14 @@ func TestApply(t *testing.T) {
 	if mk := prog.Get("/frame/maxed"); !mk.Mastered || mk.Owned {
 		t.Errorf("frame = %+v, want mastered and owned untouched", mk)
 	}
-	if prog.Get("/kuva/rank30").Mastered {
-		t.Error("rank 30 of 40 is not mastered")
+	if mk := prog.Get("/kuva/rank30"); mk.Mastered || mk.Rank != 30 {
+		t.Errorf("kuva at 30/40 = %+v, want in progress at rank 30", mk)
+	}
+	if mk := prog.Get("/weapon/half"); mk.Rank != 15 {
+		t.Errorf("half-levelled weapon rank = %d, want 15", mk.Rank)
+	}
+	if got := items[3].EarnedXP(false, 30); got != 3000 {
+		t.Errorf("rank 30 of 40 earns %d, want 3000", got)
 	}
 	if prog.Extra.Railjack != 15*1500 || prog.Extra.Drifter != 3*1500 {
 		t.Errorf("intrinsics = %d / %d", prog.Extra.Railjack, prog.Extra.Drifter)
