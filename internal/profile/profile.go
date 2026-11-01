@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"math"
 	"strings"
 	"unicode"
@@ -52,11 +53,16 @@ type rawResult struct {
 var ErrNotProfile = errors.New("this doesn't look like a Warframe profile file")
 
 // Parse accepts the endpoint's response as saved by a browser, or just the
-// single result inside it.
+// single result inside it. A page saved as HTML (Chrome's "Webpage" save
+// wraps the JSON in <pre>) is unwrapped first.
 func Parse(b []byte) (*Profile, error) {
 	b = bytes.TrimSpace(b)
 	if len(b) > 0 && b[0] == '<' {
-		return nil, errors.New("this is an HTML page, not the profile data: save the page as raw JSON (Firefox: \"Raw Data\" tab → Save)")
+		start, end := bytes.IndexByte(b, '{'), bytes.LastIndexByte(b, '}')
+		if start < 0 || end < start {
+			return nil, errors.New("this is an HTML page without profile data in it: save the page as raw JSON (Firefox: \"Raw Data\" tab → Save)")
+		}
+		b = []byte(html.UnescapeString(string(b[start : end+1])))
 	}
 	var wrapped struct {
 		Results []json.RawMessage `json:"Results"`

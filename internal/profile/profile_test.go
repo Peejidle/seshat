@@ -52,6 +52,20 @@ func TestApply(t *testing.T) {
 	}
 }
 
+func TestParseHTMLWrapped(t *testing.T) {
+	// What Chrome's "Webpage, HTML only" save produces.
+	page := `<html><head><meta name="color-scheme" content="light dark"></head><body><pre style="word-wrap: break-word;">` +
+		`{"Results":[{"DisplayName":"A&amp;B","LoadOutInventory":{"XPInfo":[{"ItemType":"/x","XP":1}]}}]}` +
+		`</pre><div class="json-formatter-container"></div></body></html>`
+	p, err := Parse([]byte(page))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.DisplayName != "A&B" || p.XP["/x"] != 1 {
+		t.Errorf("got %+v", p)
+	}
+}
+
 func TestParseRejects(t *testing.T) {
 	for _, in := range []string{`<html></html>`, `{"Results":[]}`, `not json`, `{"foo":1}`} {
 		if _, err := Parse([]byte(in)); err == nil {
