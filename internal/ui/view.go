@@ -178,20 +178,20 @@ func banner() string {
 }
 
 func (m Model) header() string {
-	all := m.tallyFor("")
-	xp := all.xp + m.prog.Extra.Total()
-	rank, cur, next := mastery.Rank(xp)
+	all := mastery.Count(m.items, m.prog, "")
+	xp := mastery.Estimate(m.items, m.prog)
+	rank, floor, next := mastery.Rank(xp)
 	left := sTitle.Render(" ◈ CEPHALON SESHAT")
 	if m.width >= 120 {
 		left += sSub.Render("  keeper of the codex")
 	}
 
-	frac := float64(xp-cur) / float64(next-cur)
+	frac := float64(xp-floor) / float64(next-floor)
 	right := fmt.Sprintf("%s %s %s  %s",
 		sGold.Bold(true).Render(mastery.Label(rank)),
 		bar(frac, 16),
-		sDim.Render(fmt.Sprintf("%s/%s to %s", commas(xp-cur), commas(next-cur), mastery.Label(rank+1))),
-		sText.Render(fmt.Sprintf("%d/%d ", all.mastered, all.total)))
+		sDim.Render(fmt.Sprintf("%s/%s to %s", commas(xp-floor), commas(next-floor), mastery.Label(rank+1))),
+		sText.Render(fmt.Sprintf("%d/%d ", all.Mastered, all.Total)))
 	gap := m.width - lipgloss.Width(left) - lipgloss.Width(right)
 	if gap < 1 {
 		return trunc(left+" "+right, m.width)
@@ -248,7 +248,7 @@ func (m Model) toolbar(w int) string {
 		cat = catalog.Categories[m.tab-1]
 		name = string(cat)
 	}
-	t := m.tallyFor(cat)
+	t := mastery.Count(m.items, m.prog, cat)
 
 	var search string
 	switch {
@@ -261,9 +261,9 @@ func (m Model) toolbar(w int) string {
 	}
 	left := fmt.Sprintf(" %s  %s  %s %s",
 		sGold.Render(name),
-		sText.Render(fmt.Sprintf("%d/%d mastered · %d owned", t.mastered, t.total, t.owned)),
-		bar(float64(t.mastered)/float64(max(t.total, 1)), 10),
-		sDim.Render(fmt.Sprintf("%s/%s xp", commas(t.xp), commas(t.xpTotal))))
+		sText.Render(fmt.Sprintf("%d/%d mastered · %d owned", t.Mastered, t.Total, t.Owned)),
+		bar(float64(t.Mastered)/float64(max(t.Total, 1)), 10),
+		sDim.Render(fmt.Sprintf("%s/%s xp", commas(t.XP), commas(t.XPTotal))))
 	hidden := ""
 	if m.prog.Settings.HideMastered && m.filter != fMastered {
 		hidden = " · mastered hidden"
@@ -408,11 +408,11 @@ func (m Model) detail(it catalog.Item, w, imgCols int) string {
 		}
 		return sDim.Render(no)
 	}
-	mastery := state(mk.Mastered, "★ Mastered", "· Not mastered")
+	progress := state(mk.Mastered, "★ Mastered", "· Not mastered")
 	if !mk.Mastered && mk.Rank > 0 {
-		mastery = sGold.Render(fmt.Sprintf("◐ Rank %d of %d", mk.Rank, it.MaxRank))
+		progress = sGold.Render(fmt.Sprintf("◐ Rank %d of %d", mk.Rank, it.MaxRank))
 	}
-	b.WriteString(mastery + "   " + state(mk.Owned, "● Owned", "○ Not owned") + "\n")
+	b.WriteString(progress + "   " + state(mk.Owned, "● Owned", "○ Not owned") + "\n")
 	if !mk.Mastered && mk.Rank > 0 {
 		left := it.MasteryXP() - it.EarnedXP(false, mk.Rank)
 		b.WriteString(sDim.Render(fmt.Sprintf("%s XP still to earn", commas(left))) + "\n")
@@ -446,16 +446,16 @@ func (m Model) detail(it catalog.Item, w, imgCols int) string {
 		b.WriteString("\n" + sLapis.Render("Parts") + sDim.Render(fmt.Sprintf("  %d/%d", held, need)) + "\n")
 		for part, c := range parts {
 			n := c.Name
-			held := min(m.prog.HeldParts(it.ID, c.ID), c.Count)
+			have := min(m.prog.HeldParts(it.ID, c.ID), c.Count)
 			box, st := sDim.Render("[ ]"), sText
 			switch {
-			case held == c.Count:
+			case have == c.Count:
 				box = sGold.Render("[✓]")
-			case held > 0:
+			case have > 0:
 				box = sGold.Render("[◐]")
 			}
 			if c.Count > 1 {
-				n = fmt.Sprintf("%s %d/%d", n, held, c.Count)
+				n = fmt.Sprintf("%s %d/%d", n, have, c.Count)
 			}
 			sel := "  "
 			if m.modal == mDetail && part == m.partAt {
@@ -562,27 +562,26 @@ func (m Model) ledgerView() string {
 	b.WriteString(sSub.Render("in-game under Profile → Mastery Rank. For intrinsics, add up") + "\n")
 	b.WriteString(sSub.Render("the rank (0–10) of every school; each rank is 1,500 xp.") + "\n\n")
 	for i, f := range ledgerFields {
-		cur := "  "
+		sel := "  "
 		if i == m.ledgerAt {
-			cur = sGold.Render("▸ ")
+			sel = sGold.Render("▸ ")
 		}
 		unit := "xp"
 		if f.maxRank > 0 {
 			unit = fmt.Sprintf("ranks of %d, all schools added up", f.maxRank)
 		}
-		b.WriteString(cur + sText.Render(pad(f.label, 22)) + pad(m.ledger[i].View(), 13) + sDim.Render(unit) + "\n")
+		b.WriteString(sel + sText.Render(pad(f.label, 22)) + pad(m.ledger[i].View(), 13) + sDim.Render(unit) + "\n")
 	}
 
 	b.WriteString("\n" + sLapis.Render("Tally by category") + "\n")
 	for _, c := range catalog.Categories {
-		t := m.tallyFor(c)
+		t := mastery.Count(m.items, m.prog, c)
 		b.WriteString(fmt.Sprintf("  %s %s %s\n",
 			sText.Render(pad(string(c), 18)),
-			bar(float64(t.mastered)/float64(max(t.total, 1)), 12),
-			sDim.Render(fmt.Sprintf("%3d/%-3d  %9s xp", t.mastered, t.total, commas(t.xp)))))
+			bar(float64(t.Mastered)/float64(max(t.Total, 1)), 12),
+			sDim.Render(fmt.Sprintf("%3d/%-3d  %9s xp", t.Mastered, t.Total, commas(t.XP)))))
 	}
-	all := m.tallyFor("")
-	xp := all.xp + m.prog.Extra.Total()
+	xp := mastery.Estimate(m.items, m.prog)
 	rank, _, _ := mastery.Rank(xp)
 	b.WriteString(fmt.Sprintf("\n  %s %s  %s\n",
 		sText.Render(pad("Estimated total", 18)), sGold.Bold(true).Render(commas(xp)+" xp"),

@@ -126,3 +126,14 @@ func TestLedgerStaysOpen(t *testing.T) {
 		t.Errorf("esc should close and keep what was saved")
 	}
 }
+
+func TestMarkInDetailsKeepsItem(t *testing.T) {
+	m := press(testModel(t), "H", "j", "enter", " ")
+	if it, ok := m.current(); !ok || it.Name != "Atlas" || m.modal != mDetail {
+		t.Fatalf("details now show %q (modal %v), want Atlas still open", it.Name, m.modal)
+	}
+	m = press(m, "q") // any other key closes; the hidden item then drops out
+	if it, _ := m.current(); it.Name == "Atlas" {
+		t.Errorf("Atlas is mastered and hidden, yet still selected after closing")
+	}
+}

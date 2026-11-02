@@ -6,9 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -16,7 +14,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Peejidle/seshat/internal/catalog"
-	"github.com/Peejidle/seshat/internal/profile"
 	"github.com/Peejidle/seshat/internal/store"
 	"github.com/Peejidle/seshat/internal/termimg"
 )
@@ -289,6 +286,7 @@ func (m Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		default:
 			m.modal = mNone
+			m.rebuildKeep() // marks made in the details may have filtered it out
 			return m, m.wantImage()
 		}
 	case mLedger:
@@ -425,12 +423,12 @@ func (m Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		moved = true
 	case "enter":
 		if _, ok := m.current(); ok {
-			m.modal, m.partAt = mDetail, 0
+			m.modal, m.partAt, m.anchor = mDetail, 0, -1
 			return m, m.wantImage()
 		}
 	case "w":
 		if it, ok := m.current(); ok && it.WikiURL != "" {
-			if err := exec.Command("xdg-open", it.WikiURL).Start(); err != nil {
+			if err := openExternal(it.WikiURL); err != nil {
 				m.fail("could not open browser: %v", err)
 			} else {
 				m.say("Opening %s on the wiki…", it.Name)
@@ -470,400 +468,6 @@ func (m Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// ledgerField is one ledger entry. Intrinsics are entered as total ranks,
-// the number the game shows, and stored as XP.
-type ledgerField struct {
-	label   string
-	perUnit int // XP per entered unit
-	maxRank int // 0 for XP fields
-}
-
-var ledgerFields = []ledgerField{
-	{"Star Chart", 1, 0},
-	{"Steel Path", 1, 0},
-	{"Railjack intrinsics", 1500, 50}, // 5 schools x rank 10
-	{"Drifter intrinsics", 1500, 40},  // 4 schools x rank 10
-	{"Other", 1, 0},
-}
-
-func (m *Model) extraPtrs() []*int {
-	e := &m.prog.Extra
-	return []*int{&e.StarChart, &e.SteelPath, &e.Railjack, &e.Drifter, &e.Other}
-}
-
-func (m *Model) openLedger() {
-	m.modal, m.ledgerAt = mLedger, 0
-	m.status = ""
-	m.ledger = make([]textinput.Model, len(ledgerFields))
-	for i, p := range m.extraPtrs() {
-		t := textinput.New()
-		t.Prompt = ""
-		t.CharLimit = 9
-		t.Width = 12
-		t.SetValue(strconv.Itoa(*p / ledgerFields[i].perUnit))
-		m.ledger[i] = t
-	}
-	m.ledger[0].Focus()
-}
-
-func (m Model) ledgerKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch k.String() {
-	case "esc":
-		m.modal = mNone
-		m.say("Ledger closed.")
-		return m, nil
-	case "enter":
-		// Save and move on, so several fields can be filled in one visit.
-		vals := make([]int, len(m.ledger))
-		for i := range m.ledger {
-			f := ledgerFields[i]
-			v, err := strconv.Atoi(strings.ReplaceAll(strings.TrimSpace(m.ledger[i].Value()), ",", ""))
-			switch {
-			case err != nil || v < 0:
-				m.fail("%s must be a whole number", f.label)
-				return m, nil
-			case f.maxRank > 0 && v > f.maxRank:
-				m.fail("%s: %d ranks at most (every school at 10)", f.label, f.maxRank)
-				return m, nil
-			}
-			vals[i] = v * f.perUnit
-		}
-		for i, p := range m.extraPtrs() {
-			*p = vals[i]
-		}
-		m.say("✓ Ledger inscribed.")
-		m.save() // replaces the message if writing fails
-		m.ledger[m.ledgerAt].Blur()
-		m.ledgerAt = (m.ledgerAt + 1) % len(m.ledger)
-		return m, m.ledger[m.ledgerAt].Focus()
-	case "tab", "down":
-		m.ledger[m.ledgerAt].Blur()
-		m.ledgerAt = (m.ledgerAt + 1) % len(m.ledger)
-		return m, m.ledger[m.ledgerAt].Focus()
-	case "shift+tab", "up":
-		m.ledger[m.ledgerAt].Blur()
-		m.ledgerAt = (m.ledgerAt + len(m.ledger) - 1) % len(m.ledger)
-		return m, m.ledger[m.ledgerAt].Focus()
-	}
-	var cmd tea.Cmd
-	m.ledger[m.ledgerAt], cmd = m.ledger[m.ledgerAt].Update(k)
-	return m, cmd
-}
-
-func (m Model) importKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch k.String() {
-	case "esc":
-		m.modal = mNone
-		return m, nil
-	case "enter":
-		path := strings.TrimSpace(m.pathIn.Value())
-		if strings.HasPrefix(path, "~/") {
-			home, _ := os.UserHomeDir()
-			path = filepath.Join(home, path[2:])
-		}
-		if m.fromProf {
-			if err := m.importProfile(path); err != nil {
-				m.fail("profile import failed: %v", err)
-				return m, nil // keep the prompt open to fix the path
-			}
-		} else if err := m.prog.Import(path); err != nil {
-			m.fail("import failed: %v", err)
-		} else {
-			m.save()
-			m.say("Records restored from %s (%d marks).", path, len(m.prog.Marks))
-			m.rebuildKeep()
-		}
-		m.modal = mNone
-		return m, nil
-	}
-	var cmd tea.Cmd
-	m.pathIn, cmd = m.pathIn.Update(k)
-	return m, cmd
-}
-
-func (m *Model) importProfile(path string) error {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	p, err := profile.Parse(b)
-	if err != nil {
-		return err
-	}
-	r := profile.Apply(p, m.items, m.prog)
-	m.save()
-	m.say("%s", profile.Summary(r))
-	m.rebuildKeep()
-	return nil
-}
-
-// guessProfilePath suggests the newest profile the browser saved to
-// ~/Downloads, since browsers name it after the endpoint.
-func guessProfilePath() string {
-	home, _ := os.UserHomeDir()
-	dir := filepath.Join(home, "Downloads")
-	entries, _ := os.ReadDir(dir)
-	var best string
-	var newest time.Time
-	for _, e := range entries {
-		if !strings.HasPrefix(strings.ToLower(e.Name()), "getprofileviewingdata") {
-			continue
-		}
-		if info, err := e.Info(); err == nil && info.ModTime().After(newest) {
-			best, newest = e.Name(), info.ModTime()
-		}
-	}
-	if best == "" {
-		return "~/Downloads/"
-	}
-	return "~/Downloads/" + best
-}
-
-// ---- list state -----------------------------------------------------------
-
-func (m *Model) rebuild() {
-	q := strings.ToLower(strings.TrimSpace(m.search.Value()))
-	m.anchor = -1
-	m.visible = m.visible[:0]
-	for i, it := range m.items {
-		if m.tab > 0 && it.Category != catalog.Categories[m.tab-1] {
-			continue
-		}
-		if q != "" && !strings.Contains(strings.ToLower(it.Name), q) && !strings.Contains(strings.ToLower(it.Type), q) {
-			continue
-		}
-		mk := m.prog.Get(it.ID)
-		// The "mastered" filter overrides hiding, or it would always be empty.
-		if mk.Mastered && m.prog.Settings.HideMastered && m.filter != fMastered {
-			continue
-		}
-		switch m.filter {
-		case fOwnedUnmastered:
-			if !mk.Owned || mk.Mastered {
-				continue
-			}
-		case fInProgress:
-			if mk.Mastered || mk.Rank == 0 {
-				continue
-			}
-		case fCollecting:
-			if held, _ := m.partsProgress(it); mk.Owned || held == 0 {
-				continue
-			}
-		case fMastered:
-			if !mk.Mastered {
-				continue
-			}
-		case fNew:
-			if !m.newIDs[it.ID] {
-				continue
-			}
-		}
-		m.visible = append(m.visible, i)
-	}
-	items := m.items
-	switch m.sort {
-	case sType:
-		sort.SliceStable(m.visible, func(a, b int) bool {
-			ia, ib := items[m.visible[a]], items[m.visible[b]]
-			if ia.Category != ib.Category {
-				return catIndex(ia.Category) < catIndex(ib.Category)
-			}
-			return ia.Type < ib.Type
-		})
-	case sNewest:
-		sort.SliceStable(m.visible, func(a, b int) bool {
-			return items[m.visible[a]].ReleaseDate > items[m.visible[b]].ReleaseDate
-		})
-	}
-	m.clamp()
-}
-
-// rebuildKeep rebuilds but keeps the cursor near the same row, so marking an
-// item that then drops out of the filter doesn't jump to the top.
-func (m *Model) rebuildKeep() {
-	c := m.cursor
-	m.rebuild()
-	m.cursor = c
-	m.clamp()
-}
-
-func catIndex(c catalog.Category) int {
-	for i, x := range catalog.Categories {
-		if x == c {
-			return i
-		}
-	}
-	return len(catalog.Categories)
-}
-
-func (m *Model) clamp() {
-	if m.cursor >= len(m.visible) {
-		m.cursor = len(m.visible) - 1
-	}
-	if m.cursor < 0 {
-		m.cursor = 0
-	}
-	h := m.listHeight()
-	if m.cursor < m.offset {
-		m.offset = m.cursor
-	}
-	if m.cursor >= m.offset+h {
-		m.offset = m.cursor - h + 1
-	}
-	if m.offset < 0 {
-		m.offset = 0
-	}
-}
-
-func (m Model) inSelection(i int) bool {
-	if m.anchor < 0 {
-		return false
-	}
-	return i >= min(m.anchor, m.cursor) && i <= max(m.anchor, m.cursor)
-}
-
-// targets is what a mark applies to: the bulk selection, or the cursor row.
-func (m Model) targets() []catalog.Item {
-	if m.anchor < 0 {
-		if it, ok := m.current(); ok {
-			return []catalog.Item{it}
-		}
-		return nil
-	}
-	var out []catalog.Item
-	for i := min(m.anchor, m.cursor); i <= max(m.anchor, m.cursor); i++ {
-		out = append(out, m.items[m.visible[i]])
-	}
-	return out
-}
-
-// markMastered toggles mastery on the targets. A mixed selection gets
-// mastered; only an all-mastered one is cleared. Mastering implies owning.
-func (m *Model) markMastered() {
-	ts := m.targets()
-	if len(ts) == 0 {
-		return
-	}
-	on, xp := false, 0
-	for _, it := range ts {
-		if !m.prog.Get(it.ID).Mastered {
-			on = true
-		}
-	}
-	for _, it := range ts {
-		mk := m.prog.Get(it.ID)
-		if on && !mk.Mastered {
-			xp += it.MasteryXP()
-		}
-		mk.Mastered = on
-		if on {
-			mk.Owned = true
-		}
-		m.prog.Set(it.ID, mk)
-	}
-	switch {
-	case len(ts) == 1 && on:
-		m.say("%s — mastery inscribed. +%s XP", ts[0].Name, commas(xp))
-	case len(ts) == 1:
-		m.say("%s — mastery struck from the record.", ts[0].Name)
-	case on:
-		m.say("Mastery inscribed for %d items. +%s XP", len(ts), commas(xp))
-	default:
-		m.say("Mastery struck from %d items.", len(ts))
-	}
-	m.save()
-	m.rebuildKeep()
-}
-
-// markOwned toggles ownership the same way as markMastered.
-func (m *Model) markOwned() {
-	ts := m.targets()
-	if len(ts) == 0 {
-		return
-	}
-	on := false
-	for _, it := range ts {
-		if !m.prog.Get(it.ID).Owned {
-			on = true
-		}
-	}
-	for _, it := range ts {
-		mk := m.prog.Get(it.ID)
-		mk.Owned = on
-		m.prog.Set(it.ID, mk)
-	}
-	switch {
-	case len(ts) == 1 && on:
-		m.say("%s — marked as in your arsenal.", ts[0].Name)
-	case len(ts) == 1:
-		m.say("%s — marked as not owned.", ts[0].Name)
-	case on:
-		m.say("%d items marked as in your arsenal.", len(ts))
-	default:
-		m.say("%d items marked as not owned.", len(ts))
-	}
-	m.save()
-	m.rebuildKeep()
-}
-
-// partKey moves through and checks off the current item's parts: p steps
-// the selected part through 0..needed, a fills or clears them all.
-func (m *Model) partKey(key string) {
-	it, ok := m.current()
-	if !ok {
-		return
-	}
-	parts := it.Parts()
-	if len(parts) == 0 {
-		m.say("%s has no parts to collect.", it.Name)
-		return
-	}
-	m.partAt = min(max(m.partAt, 0), len(parts)-1)
-	switch key {
-	case "down", "j":
-		m.partAt = min(m.partAt+1, len(parts)-1)
-		return
-	case "up", "k":
-		m.partAt = max(m.partAt-1, 0)
-		return
-	case "p":
-		c := parts[m.partAt]
-		m.prog.SetPart(it.ID, c.ID, (m.prog.HeldParts(it.ID, c.ID)+1)%(c.Count+1))
-	case "a":
-		held, need := m.partsProgress(it)
-		for _, c := range parts {
-			n := 0
-			if held < need {
-				n = c.Count
-			}
-			m.prog.SetPart(it.ID, c.ID, n)
-		}
-	}
-	if held, need := m.partsProgress(it); held == need {
-		m.say("All parts for %s collected: ready for the foundry.", it.Name)
-	} else {
-		m.say("%s: %d of %d parts collected.", it.Name, held, need)
-	}
-	m.save()
-}
-
-// partsProgress counts the parts held toward an item and the parts needed.
-func (m Model) partsProgress(it catalog.Item) (held, need int) {
-	for _, c := range it.Parts() {
-		held += min(m.prog.HeldParts(it.ID, c.ID), c.Count)
-		need += c.Count
-	}
-	return held, need
-}
-
-func (m Model) current() (catalog.Item, bool) {
-	if m.cursor < 0 || m.cursor >= len(m.visible) {
-		return catalog.Item{}, false
-	}
-	return m.items[m.visible[m.cursor]], true
-}
-
 // wantImage schedules a (debounced) icon load for the selected item.
 func (m Model) wantImage() tea.Cmd {
 	it, ok := m.current()
@@ -898,36 +502,15 @@ func openImage(dir, name string) tea.Cmd {
 	return func() tea.Msg {
 		path, err := catalog.Image(dir, name)
 		if err == nil {
-			err = exec.Command("xdg-open", path).Start()
+			err = openExternal(path)
 		}
 		return openedMsg{err}
 	}
 }
 
-// ---- stats ----------------------------------------------------------------
-
-type tally struct{ total, owned, mastered, partial, xp, xpTotal int }
-
-func (m Model) tallyFor(cat catalog.Category) tally {
-	var t tally
-	for _, it := range m.items {
-		if cat != "" && it.Category != cat {
-			continue
-		}
-		mk := m.prog.Get(it.ID)
-		t.total++
-		t.xpTotal += it.MasteryXP()
-		if mk.Owned {
-			t.owned++
-		}
-		if mk.Mastered {
-			t.mastered++
-		} else if mk.Rank > 0 {
-			t.partial++
-		}
-		t.xp += it.EarnedXP(mk.Mastered, mk.Rank)
-	}
-	return t
+// openExternal hands a URL or file to the desktop's default application.
+func openExternal(target string) error {
+	return exec.Command("xdg-open", target).Start()
 }
 
 // ---- helpers --------------------------------------------------------------

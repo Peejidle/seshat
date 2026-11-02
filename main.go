@@ -96,11 +96,7 @@ func loadItems(paths ui.Paths) ([]catalog.Item, error) {
 }
 
 func importProfile(paths ui.Paths, prog *store.Progress, file string) error {
-	b, err := os.ReadFile(file)
-	if err != nil {
-		return err
-	}
-	p, err := profile.Parse(b)
+	p, err := profile.Load(file)
 	if err != nil {
 		return err
 	}
@@ -121,36 +117,15 @@ func stats(paths ui.Paths, prog *store.Progress) error {
 	if err != nil {
 		return err
 	}
-	type t struct{ n, m, xp int }
-	per := map[catalog.Category]*t{}
-	var all t
-	for _, it := range items {
-		c := per[it.Category]
-		if c == nil {
-			c = &t{}
-			per[it.Category] = c
-		}
-		c.n++
-		all.n++
-		mk := prog.Get(it.ID)
-		if mk.Mastered {
-			c.m++
-			all.m++
-		}
-		xp := it.EarnedXP(mk.Mastered, mk.Rank)
-		c.xp += xp
-		all.xp += xp
-	}
 	for _, cat := range catalog.Categories {
-		c := per[cat]
-		if c == nil {
-			continue
+		if t := mastery.Count(items, prog, cat); t.Total > 0 {
+			fmt.Printf("%-18s %4d/%-4d %10d xp\n", cat, t.Mastered, t.Total, t.XP)
 		}
-		fmt.Printf("%-18s %4d/%-4d %10d xp\n", cat, c.m, c.n, c.xp)
 	}
-	xp := all.xp + prog.Extra.Total()
+	all := mastery.Count(items, prog, "")
+	xp := mastery.Estimate(items, prog)
 	rank, _, _ := mastery.Rank(xp)
-	fmt.Printf("%-18s %4d/%-4d %10d xp  (+%d ledger)  ≈ %s\n", "Total", all.m, all.n, xp, prog.Extra.Total(), mastery.Label(rank))
+	fmt.Printf("%-18s %4d/%-4d %10d xp  (+%d ledger)  ≈ %s\n", "Total", all.Mastered, all.Total, xp, prog.Extra.Total(), mastery.Label(rank))
 	return nil
 }
 

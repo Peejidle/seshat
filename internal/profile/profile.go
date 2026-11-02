@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"html"
 	"math"
+	"os"
 	"strings"
 	"unicode"
 
@@ -21,9 +22,6 @@ import (
 // URL is the profile endpoint for PC; consoles use api-ps4, api-xb1,
 // api-swi, api-mob or api-and in place of api.
 const URL = "https://api.warframe.com/cdn/getProfileViewingData.php?playerId="
-
-// AccountIDURL shows a logged-in user their account ID ("user_id").
-const AccountIDURL = "https://www.warframe.com/api/user-data"
 
 // Intrinsic schools, each rank worth 1,500 mastery XP.
 var (
@@ -51,6 +49,15 @@ type rawResult struct {
 }
 
 var ErrNotProfile = errors.New("this doesn't look like a Warframe profile file")
+
+// Load reads and parses a saved profile file.
+func Load(path string) (*Profile, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return Parse(b)
+}
 
 // Parse accepts the endpoint's response as saved by a browser, or just the
 // single result inside it. A page saved as HTML (Chrome's "Webpage" save
