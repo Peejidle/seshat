@@ -100,6 +100,13 @@ type Model struct {
 
 	relicAt, relicTop int  // selected and first shown relic in the finder
 	relicVaulted      bool // the finder includes vaulted relics
+	relicMine         bool // the finder lists the relics you hold
+	relicQuery        textinput.Model
+	relicTyping       bool // keys go to relicQuery
+	relicCount        textinput.Model
+	relicCounting     bool   // keys go to relicCount
+	relicMsg          string // result of the last count entry
+	relicMsgErr       bool
 
 	imgMode termimg.Mode
 	images  map[string]string // imgKey(name, cols) -> rendered, "" while pending
@@ -143,8 +150,18 @@ func New(paths Paths, prog *store.Progress) Model {
 	p.Prompt = "path › "
 	p.CharLimit = 512
 
+	r := textinput.New()
+	r.Prompt = "⌕ "
+	r.Placeholder = "a part or relic, e.g. nyx prime, axi s8"
+	r.CharLimit = 64
+
+	c := textinput.New()
+	c.Prompt = "count › "
+	c.Placeholder = "a s8 12, l n1 4, m s3 +2"
+	c.CharLimit = 256
+
 	m := Model{
-		paths: paths, prog: prog, search: s, pathIn: p,
+		paths: paths, prog: prog, search: s, pathIn: p, relicQuery: r, relicCount: c,
 		newIDs: map[string]bool{}, anchor: -1, imgMode: termimg.Detect(),
 		images: map[string]string{}, imgErr: map[string]bool{},
 	}

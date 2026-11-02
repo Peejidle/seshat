@@ -47,9 +47,12 @@ type Progress struct {
 	Seen map[string]bool `json:"seen"`
 	// Parts counts the blueprints and parts held toward an item:
 	// item ID -> component ID -> how many.
-	Parts    map[string]map[string]int `json:"parts,omitempty"`
-	Settings Settings                  `json:"settings"`
-	Updated  time.Time                 `json:"updated"`
+	Parts map[string]map[string]int `json:"parts,omitempty"`
+	// Relics counts the void relics held, by name ("Axi S8"), refinements
+	// together.
+	Relics   map[string]int `json:"relics,omitempty"`
+	Settings Settings       `json:"settings"`
+	Updated  time.Time      `json:"updated"`
 }
 
 func New() *Progress {
@@ -124,6 +127,21 @@ func (p *Progress) SetPart(item, part string, n int) {
 	p.Parts[item][part] = n
 }
 
+// HeldRelics is how many of a relic the user holds.
+func (p *Progress) HeldRelics(name string) int { return p.Relics[name] }
+
+// SetRelics records n of a relic held.
+func (p *Progress) SetRelics(name string, n int) {
+	if n <= 0 {
+		delete(p.Relics, name)
+		return
+	}
+	if p.Relics == nil {
+		p.Relics = map[string]int{}
+	}
+	p.Relics[name] = n
+}
+
 func (p *Progress) Get(id string) Mark { return p.Marks[id] }
 
 func (p *Progress) Set(id string, m Mark) {
@@ -134,7 +152,8 @@ func (p *Progress) Set(id string, m Mark) {
 	p.Marks[id] = m
 }
 
-// Import replaces marks, parts and extra XP from a backup file, keeping Seen.
+// Import replaces marks, parts, relics and extra XP from a backup file,
+// keeping Seen.
 func (p *Progress) Import(path string) error {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -144,7 +163,7 @@ func (p *Progress) Import(path string) error {
 	if err != nil {
 		return err
 	}
-	p.Marks, p.Parts, p.Extra = in.Marks, in.Parts, in.Extra
+	p.Marks, p.Parts, p.Relics, p.Extra = in.Marks, in.Parts, in.Relics, in.Extra
 	return nil
 }
 

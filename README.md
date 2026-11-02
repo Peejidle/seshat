@@ -52,7 +52,7 @@ In the TUI press `?` for every key. The main ones:
 | `enter` | details with a large image; check off parts there (`j`/`k` pick, `p` have it, `a` all/none) |
 | `w` / `i` | open the wiki page (drop locations) / the full-size image |
 | `T` | theme: follow your terminal's colours (default), or Seshat's own |
-| `R` | relic finder: farmable relics holding parts you need |
+| `R` | relic finder: relics holding parts you need; there `/` looks up any part or relic, `c` counts your relics, `o` lists them |
 | `x` | ledger: star chart & steel path XP, intrinsic ranks, for the MR estimate |
 | `u` | sync item data now |
 | `P` | import mastery from your saved Warframe profile |
@@ -75,6 +75,32 @@ items you haven't built or mastered and haven't checked off — with the
 relics holding the most of them first. Each part shows its rarity and its
 chance intact → radiant. By default only relics you can farm right now are
 listed; `v` adds vaulted ones (for trading or Prime Resurgence).
+
+Press `/` in the finder to look anything up instead: a part (`nyx prime
+chassis`, or just `nyx prime` for the whole set) lists every relic that
+drops it, vaulted or not, and a relic's name (`axi s8`) lists everything in
+it. Parts you still need are marked `●`. `esc` clears the search.
+
+### Counting your relics
+
+Seshat can't see your inventory (that would mean reading the game), so you
+count relics in by hand, made as quick as possible:
+
+- Press `c` in the finder and type `tier name count`, as many as you like
+  per line, separated by commas: `a s8 12, l n1 4, meso s3 2`. The tier can
+  be written out or just its first letter. Enter saves, and the box stays
+  open for the next line; `esc` when you're done. If any entry is wrong,
+  nothing on that line is saved and the text stays so you can fix it.
+- `+2` or `-1` in place of a count adds or removes, for after a run:
+  `a s8 -1, l n1 +3`.
+- A count on its own sets the selected relic, so `/` to find a relic, then
+  `c` and `5`. `+` and `-` (no box) change it by one.
+- `o` shows **my relics**: everything you hold, the ones with the most parts
+  you need first, every reward listed and the needed ones marked `●`.
+
+Relics you hold are counted (`×12`) wherever they appear, show up in the
+finder even when vaulted, and lead the drop line under each part in the
+details (`have Axi S8 ×12 11%`). Refinements aren't tracked separately.
 
 The details view also shows, under each missing part, the best farmable
 relics for it, or how many vaulted relics hold it.

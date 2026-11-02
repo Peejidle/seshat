@@ -145,18 +145,79 @@ func TestRelicFinder(t *testing.T) {
 	m.items[0].Components = []catalog.Component{{ID: "bp", Name: "Blueprint", Count: 1, Part: true}}
 	m.items[1].Components = []catalog.Component{{ID: "bp2", Name: "Blueprint", Count: 1, Part: true}}
 	m.drops = map[string][]relics.Drop{
-		partKey("Ash", "bp"):    {{Relic: rel}},
+		partKey("Ash", "bp"):    {{Relic: rel, Reward: relics.Reward{Item: "Ash Blueprint"}}},
 		partKey("Atlas", "bp2"): {{Relic: rel}},
 	}
 	m.relics = &relics.Table{}
 	m.prog.Set("Atlas", store.Mark{Owned: true}) // built already, so not needed
 	m = press(m, "R")
 	es := m.relicEntries()
-	if m.modal != mRelics || len(es) != 1 || len(es[0].needs) != 1 || es[0].needs[0].item != "Ash" {
+	if m.modal != mRelics || len(es) != 1 || len(es[0].rows) != 1 || es[0].rows[0].name != "Ash Blueprint" {
 		t.Fatalf("entries = %+v", es)
 	}
 	m.prog.SetPart("Ash", "bp", 1) // now held
 	if es := m.relicEntries(); len(es) != 0 {
 		t.Errorf("held part still listed: %+v", es)
+	}
+}
+
+func TestRelicSearch(t *testing.T) {
+	m := testModel(t)
+	m.relics = &relics.Table{Relics: []*relics.Relic{
+		{Name: "Lith A1", Farmable: true, Rewards: []relics.Reward{{Item: "Nyx Prime Chassis Blueprint", Intact: 11}, {Item: "Forma Blueprint", Intact: 25}}},
+		{Name: "Axi S8", Rewards: []relics.Reward{{Item: "Nyx Prime Systems Blueprint", Intact: 2}, {Item: "Forma Blueprint", Intact: 25}}},
+	}}
+	m = press(m, "R", "/", "n", "y", "x")
+	es := m.relicEntries()
+	if len(es) != 2 || len(es[0].rows) != 1 || !es[0].relic.Farmable {
+		t.Fatalf("search nyx = %+v", es) // vaulted Axi S8 is included, after the farmable one
+	}
+	m.relicQuery.SetValue("axi s8") // a relic's name lists all of it
+	if es := m.relicEntries(); len(es) != 1 || len(es[0].rows) != 2 {
+		t.Errorf("search axi s8 = %+v", es)
+	}
+	m = press(m, "q") // still typing: q goes into the search box
+	if m.modal != mRelics {
+		t.Error("typing q closed the finder")
+	}
+}
+
+func TestRelicCounts(t *testing.T) {
+	m := testModel(t)
+	s8 := &relics.Relic{Name: "Axi S8", Tier: 3, Rewards: []relics.Reward{{Item: "Forma Blueprint"}}}
+	n1 := &relics.Relic{Name: "Lith N1", Tier: 0, Farmable: true, Rewards: []relics.Reward{{Item: "Forma Blueprint"}}}
+	m.relics = &relics.Table{Relics: []*relics.Relic{s8, n1}}
+
+	enter := func(m Model, line string) Model {
+		m.relicCount.SetValue(line)
+		mm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		return mm.(Model)
+	}
+	m = press(m, "R", "c")
+	m = enter(m, "a s8 12, lith n1 4")
+	if m.prog.HeldRelics("Axi S8") != 12 || m.prog.HeldRelics("Lith N1") != 4 || !m.relicCounting {
+		t.Fatalf("counts %v, still open %v", m.prog.Relics, m.relicCounting)
+	}
+	m = enter(m, "a s8 +2, l n1 -4")
+	if m.prog.HeldRelics("Axi S8") != 14 || m.prog.HeldRelics("Lith N1") != 0 {
+		t.Errorf("relative counts %v", m.prog.Relics)
+	}
+	m = enter(m, "a s8 1, a z9 3") // one bad entry applies nothing
+	if !m.relicMsgErr || m.prog.HeldRelics("Axi S8") != 14 || m.relicCount.Value() == "" {
+		t.Errorf("bad entry: msg %q, counts %v", m.relicMsg, m.prog.Relics)
+	}
+
+	mm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = press(mm.(Model), "o") // my relics: only Axi S8 is held
+	if es := m.relicEntries(); len(es) != 1 || es[0].relic != s8 {
+		t.Fatalf("my relics = %+v", es)
+	}
+	m = press(m, "+")
+	if m.prog.HeldRelics("Axi S8") != 15 {
+		t.Errorf("+ gave %d", m.prog.HeldRelics("Axi S8"))
+	}
+	m = press(m, "c")
+	if m = enter(m, "3"); m.prog.HeldRelics("Axi S8") != 3 { // a bare count is for the selected relic
+		t.Errorf("bare count gave %d", m.prog.HeldRelics("Axi S8"))
 	}
 }

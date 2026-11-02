@@ -219,6 +219,19 @@ func rarity(intact float64) string {
 	}
 }
 
+// Find looks a relic up by tier and name, ignoring case. The tier can be
+// written out or as its first letter: ("axi", "s8") or ("a", "s8").
+func (t *Table) Find(tier, name string) *Relic {
+	tier, name = strings.ToLower(tier), strings.ToLower(name)
+	for _, r := range t.Relics {
+		full := strings.ToLower(Tiers[r.Tier])
+		if (tier == full || tier == full[:1]) && strings.ToLower(r.Name) == full+" "+name {
+			return r
+		}
+	}
+	return nil
+}
+
 func tierIndex(s string) int {
 	for i, t := range Tiers {
 		if t == s {

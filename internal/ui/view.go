@@ -540,7 +540,7 @@ func (m Model) helpView() string {
 		{"f", "cycle filter: all, owned, in progress, collecting, mastered, new"},
 		{"s", "cycle sort: name, type, newest"},
 		{"enter", "details: check off parts with j/k and p (a = all)"},
-		{"R", "relic finder: farmable relics with parts you need"},
+		{"R", "relic finder · / look up a part · c count relics · o yours"},
 		{"w / i", "open the wiki page / full-size image"},
 		{"T", "theme: follow terminal colours, or Seshat's own"},
 		{"x", "ledger: star chart, steel path & intrinsic XP"},

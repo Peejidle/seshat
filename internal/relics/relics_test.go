@@ -72,3 +72,15 @@ func TestMatch(t *testing.T) {
 		t.Errorf("non-prime matched %+v", got)
 	}
 }
+
+func TestFind(t *testing.T) {
+	tb := load(t)
+	for _, q := range [][2]string{{"Lith", "N1"}, {"lith", "n1"}, {"l", "n1"}} {
+		if r := tb.Find(q[0], q[1]); r == nil || r.Name != "Lith N1" {
+			t.Errorf("Find(%q, %q) = %v", q[0], q[1], r)
+		}
+	}
+	if r := tb.Find("m", "n1"); r != nil {
+		t.Errorf("wrong tier found %v", r.Name)
+	}
+}
