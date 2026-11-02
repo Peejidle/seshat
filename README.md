@@ -52,7 +52,7 @@ In the TUI press `?` for every key. The main ones:
 | `enter` | details with a large image; check off parts there (`j`/`k` pick, `p` have it, `a` all/none) |
 | `w` / `i` | open the wiki page (drop locations) / the full-size image |
 | `T` | theme: follow your terminal's colours (default), or Seshat's own |
-| `R` | relic finder: relics holding parts you need; there `/` looks up any part or relic, `c` counts your relics, `o` lists them |
+| `R` | relic finder: relics holding parts you need; there `enter` opens one, `/` looks up any part or relic, `c` counts your relics, `o` lists them |
 | `x` | ledger: star chart & steel path XP, intrinsic ranks, for the MR estimate |
 | `u` | sync item data now |
 | `P` | import mastery from your saved Warframe profile |
@@ -81,6 +81,20 @@ chassis`, or just `nyx prime` for the whole set) lists every relic that
 drops it, vaulted or not, and a relic's name (`axi s8`) lists everything in
 it. Parts you still need are marked `●`. `esc` clears the search.
 
+`s` switches between most-needed-first and sorting by name (Lith A1, A2 …
+A13), which also shrinks each relic to one line with its needed parts, for
+browsing: search `lith a`, press `s`, and every Lith A relic is listed in
+order. `enter` on one opens it in full.
+
+### A relic's window
+
+`enter` on a relic opens everything about it: each reward with whether you
+still need it (`[ ]` needed, `[◐]` some held, `[✓]` held, `[●]` built,
+`[★]` mastered), and the missions that drop it with their rotation and
+chance, plus any bounties. You can edit from there too: `+`/`-` or type a
+number and `enter` for the count, and `j`/`k` then `p` to check off a part
+you just got. `w` opens the relic on the wiki; any other key goes back.
+
 ### Counting your relics
 
 Seshat can't see your inventory (that would mean reading the game), so you
@@ -98,12 +112,27 @@ count relics in by hand, made as quick as possible:
 - `o` shows **my relics**: everything you hold, the ones with the most parts
   you need first, every reward listed and the needed ones marked `●`.
 
+Counts don't need to be exact; they only steer the finder. Rather than
+logging every relic you open, recount now and then: press `r` and Seshat
+walks through your relics in the order the game lists them sorted by name,
+so you can go down both lists side by side. Enter keeps a count, a number
+replaces it, `0` removes the relic, and `↑` goes back. If the game shows a
+relic Seshat's list doesn't have, type it in full (`l b4 3`); it's slotted
+into place and the recount carries on after it. `esc` pauses, and `r` later
+carries on where you stopped. "My relics" shows how long ago you last
+finished one.
+
 Relics you hold are counted (`×12`) wherever they appear, show up in the
 finder even when vaulted, and lead the drop line under each part in the
 details (`have Axi S8 ×12 11%`). Refinements aren't tracked separately.
 
 The details view also shows, under each missing part, the best farmable
 relics for it, or how many vaulted relics hold it.
+
+Vanguard relics, from a one-off event, are included too. They hold
+ordinary prime parts but no longer drop, so they're marked `event` and only
+show up when you hold some, search for them, or include vaulted relics.
+Count them like any other: `v c1 2`.
 
 Relic contents come from [WFCD's mirror](https://drops.warframestat.us) of
 DE's published drop tables, synced with the rest of the archive. A relic

@@ -101,12 +101,23 @@ type Model struct {
 	relicAt, relicTop int  // selected and first shown relic in the finder
 	relicVaulted      bool // the finder includes vaulted relics
 	relicMine         bool // the finder lists the relics you hold
+	relicByName       bool // the finder sorts by name instead of parts needed
 	relicQuery        textinput.Model
 	relicTyping       bool // keys go to relicQuery
 	relicCount        textinput.Model
 	relicCounting     bool   // keys go to relicCount
 	relicMsg          string // result of the last count entry
 	relicMsgErr       bool
+	relicOpen         *relics.Relic // the relic window, over the finder; nil when closed
+	rewardAt          int           // selected reward in the relic window
+	relicDigits       string        // a count being typed in the relic window
+	rewardParts       map[string]rewardPart
+
+	recounting    bool                     // the finder is walking through a recount
+	recountList   []*relics.Relic          // relics to recount, in name order
+	recountAt     int                      // index into recountList
+	recountDone   map[*relics.Relic]string // what each relic's step did
+	recountResume *relics.Relic            // where a paused recount carries on
 
 	imgMode termimg.Mode
 	images  map[string]string // imgKey(name, cols) -> rendered, "" while pending

@@ -3,15 +3,20 @@ package relics
 import (
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 )
 
 // A cut-down drops file: two relics (one vaulted), each in two refinements,
-// and a mission that rewards one of them.
+// an event relic, and two missions and a bounty that reward one of them.
 const sample = `{
- "missionRewards": {"Earth": {"Mantle": {"rewards": {"A": [
+ "missionRewards": {"Earth": {"Mantle": {"gameMode": "Capture", "rewards": [
   {"itemName": "Lith N1 Relic", "rarity": "Uncommon", "chance": 10}
+ ]}, "Lith": {"gameMode": "Defense", "rewards": {"A": [], "B": [
+  {"itemName": "Lith N1 Relic", "rarity": "Uncommon", "chance": 20}
  ]}}}},
+ "cetusBountyRewards": [{"rewards": {"A": [{"itemName": "Lith N1 Relic", "chance": 5}]}}],
  "relics": [
   {"tier": "Lith", "relicName": "N1", "state": "Intact", "rewards": [
    {"itemName": "Nikana Prime Blueprint", "rarity": "Uncommon", "chance": 25.33},
@@ -22,6 +27,8 @@ const sample = `{
   {"tier": "Axi", "relicName": "V1", "state": "Intact", "rewards": [
    {"itemName": "Nikana Prime Blueprint", "rarity": "Uncommon", "chance": 11},
    {"itemName": "Nikana Prime Blade", "rarity": "Uncommon", "chance": 11}]},
+  {"tier": "Vanguard", "relicName": "C1", "state": "Intact", "rewards": [
+   {"itemName": "Forma Blueprint", "rarity": "Uncommon", "chance": 25.33}]},
   {"tier": "Requiem", "state": "Intact", "rewards": [{"itemName": "Lohk", "chance": 11}]}
  ]
 }`
@@ -41,8 +48,11 @@ func load(t *testing.T) *Table {
 
 func TestLoad(t *testing.T) {
 	tb := load(t)
-	if len(tb.Relics) != 2 {
-		t.Fatalf("got %d relics, want 2 (Requiem skipped, refinements merged)", len(tb.Relics))
+	if len(tb.Relics) != 3 {
+		t.Fatalf("got %d relics, want 3 (Requiem skipped, refinements merged)", len(tb.Relics))
+	}
+	if v := tb.Relics[2]; v.Name != "Vanguard C1" || !v.Event() || v.Farmable || tb.Relics[0].Event() {
+		t.Errorf("event relic = %+v", v)
 	}
 	lith, axi := tb.Relics[0], tb.Relics[1]
 	if lith.Name != "Lith N1" || !lith.Farmable || axi.Farmable {
@@ -80,7 +90,34 @@ func TestFind(t *testing.T) {
 			t.Errorf("Find(%q, %q) = %v", q[0], q[1], r)
 		}
 	}
+	if r := tb.Find("v", "c1"); r == nil || r.Name != "Vanguard C1" {
+		t.Errorf("Find(v, c1) = %v", r)
+	}
 	if r := tb.Find("m", "n1"); r != nil {
 		t.Errorf("wrong tier found %v", r.Name)
+	}
+}
+
+func TestSources(t *testing.T) {
+	lith := load(t).Relics[0]
+	want := []Source{{"Earth", "Lith", "Defense", "B", 20}, {"Earth", "Mantle", "Capture", "", 10}}
+	if len(lith.Missions) != 2 || lith.Missions[0] != want[0] || lith.Missions[1] != want[1] {
+		t.Errorf("missions = %+v", lith.Missions)
+	}
+	if len(lith.Elsewhere) != 1 || lith.Elsewhere[0] != "Cetus bounties" {
+		t.Errorf("elsewhere = %v", lith.Elsewhere)
+	}
+}
+
+func TestLess(t *testing.T) {
+	r := func(name string, tier int) *Relic { return &Relic{Name: name, Tier: tier} }
+	in := []*Relic{r("Meso A1", 1), r("Lith A13", 0), r("Lith B1", 0), r("Lith A2", 0)}
+	sort.Slice(in, func(i, j int) bool { return Less(in[i], in[j]) })
+	var got []string
+	for _, x := range in {
+		got = append(got, x.Name)
+	}
+	if strings.Join(got, ", ") != "Lith A2, Lith A13, Lith B1, Meso A1" {
+		t.Errorf("order = %v", got)
 	}
 }

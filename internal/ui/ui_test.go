@@ -221,3 +221,99 @@ func TestRelicCounts(t *testing.T) {
 		t.Errorf("bare count gave %d", m.prog.HeldRelics("Axi S8"))
 	}
 }
+
+func TestRelicWindow(t *testing.T) {
+	m := testModel(t)
+	rel := &relics.Relic{Name: "Lith A1", Farmable: true, Rewards: []relics.Reward{
+		{Item: "Ash Blueprint", Intact: 25}, {Item: "Forma Blueprint", Intact: 25},
+	}}
+	m.relics = &relics.Table{Relics: []*relics.Relic{rel}}
+	m.items[0].Components = []catalog.Component{{ID: "bp", Name: "Blueprint", Count: 1, Part: true}}
+	m.drops = map[string][]relics.Drop{partKey("Ash", "bp"): {{Relic: rel, Reward: rel.Rewards[0]}}}
+	m.matchRewards()
+
+	m = press(m, "R")
+	mm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if m = mm.(Model); m.relicOpen != rel {
+		t.Fatal("enter didn't open the relic")
+	}
+	m = press(m, "1", "2")
+	mm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = press(mm.(Model), "-")
+	if m.prog.HeldRelics("Lith A1") != 11 || m.relicOpen == nil {
+		t.Fatalf("count = %d, open %v", m.prog.HeldRelics("Lith A1"), m.relicOpen != nil)
+	}
+	m = press(m, "p") // got the Ash blueprint
+	if m.prog.HeldParts("Ash", "bp") != 1 {
+		t.Error("p didn't mark the part held")
+	}
+	m = press(m, "j", "p") // Forma isn't a tracked part
+	if !m.relicMsgErr {
+		t.Error("p on Forma should explain itself")
+	}
+	m = press(m, "q")
+	if m.relicOpen != nil || m.modal != mRelics {
+		t.Errorf("q should go back to the list: open %v, modal %v", m.relicOpen != nil, m.modal)
+	}
+}
+
+func TestRelicSortByName(t *testing.T) {
+	m := testModel(t)
+	a13 := &relics.Relic{Name: "Lith A13", Rewards: []relics.Reward{{Item: "Ash Blueprint"}}}
+	a2 := &relics.Relic{Name: "Lith A2", Rewards: []relics.Reward{{Item: "Forma Blueprint"}}}
+	m.relics = &relics.Table{Relics: []*relics.Relic{a13, a2}}
+	m.items[0].Components = []catalog.Component{{ID: "bp", Name: "Blueprint", Count: 1, Part: true}}
+	m.drops = map[string][]relics.Drop{partKey("Ash", "bp"): {{Relic: a13, Reward: a13.Rewards[0]}}}
+
+	m = press(m, "R")
+	m.relicQuery.SetValue("lith a")
+	if es := m.relicEntries(); len(es) != 2 || es[0].relic != a13 {
+		t.Fatalf("most needed first: %+v", es) // A13 holds a part Ash needs
+	}
+	if m = press(m, "s"); m.relicEntries()[0].relic != a2 || m.relicAt != 1 {
+		t.Errorf("by name: A2 first, cursor still on A13 (at %d)", m.relicAt)
+	}
+}
+
+func TestRecount(t *testing.T) {
+	m := testModel(t)
+	var rs []*relics.Relic
+	for _, n := range []string{"Lith A1", "Lith A2", "Lith B4", "Lith C1", "Lith C2"} {
+		rs = append(rs, &relics.Relic{Name: n})
+	}
+	m.relics = &relics.Table{Relics: rs}
+	m.prog.SetRelics("Lith A1", 3)
+	m.prog.SetRelics("Lith A2", 1)
+	m.prog.SetRelics("Lith C1", 5)
+	m.prog.SetRelics("Lith C2", 2)
+
+	enter := func(m Model, line string) Model {
+		m.relicCount.SetValue(line)
+		mm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		return mm.(Model)
+	}
+	m = press(m, "R", "r")
+	m = enter(m, "")       // Lith A1 stays 3
+	m = enter(m, "0")      // Lith A2 is gone
+	m = enter(m, "l b4 7") // new one, slotted in after A2
+	if m.recountList[m.recountAt].Name != "Lith C1" {
+		t.Fatalf("after l b4: at %s", m.recountList[m.recountAt].Name)
+	}
+	mm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc}) // pause at C1
+	m = press(mm.(Model), "r")
+	if m.recountList[m.recountAt].Name != "Lith C1" {
+		t.Fatalf("resumed at %s", m.recountList[m.recountAt].Name)
+	}
+	m = enter(m, "4")
+	if !m.prog.RelicsCounted.IsZero() {
+		t.Error("stamped before the end")
+	}
+	m = enter(m, "") // Lith C2, the last
+	got := m.prog.Relics
+	if m.recounting || got["Lith A1"] != 3 || got["Lith A2"] != 0 || got["Lith B4"] != 7 || got["Lith C1"] != 4 || got["Lith C2"] != 2 {
+		t.Errorf("recounting %v, counts %v", m.recounting, got)
+	}
+	if m.prog.RelicsCounted.IsZero() || m.countedAgo() != "recounted today" {
+		t.Errorf("not stamped: %v", m.prog.RelicsCounted)
+	}
+}

@@ -18,6 +18,7 @@ func partKey(itemID, partID string) string { return itemID + "\x00" + partID }
 // matchDrops works out once, after loading, where every part drops.
 func (m *Model) matchDrops() {
 	m.drops = map[string][]relics.Drop{}
+	defer m.matchRewards()
 	if m.relics == nil {
 		return
 	}
@@ -115,16 +116,15 @@ func (m Model) relicEntries() []relicEntry {
 	}
 	sort.Slice(out, func(i, j int) bool {
 		a, b := out[i], out[j]
-		if a.wanted() != b.wanted() {
-			return a.wanted() > b.wanted()
+		if !m.relicByName {
+			if a.wanted() != b.wanted() {
+				return a.wanted() > b.wanted()
+			}
+			if a.relic.Farmable != b.relic.Farmable {
+				return a.relic.Farmable
+			}
 		}
-		if a.relic.Farmable != b.relic.Farmable {
-			return a.relic.Farmable
-		}
-		if a.relic.Tier != b.relic.Tier {
-			return a.relic.Tier < b.relic.Tier
-		}
-		return a.relic.Name < b.relic.Name
+		return relics.Less(a.relic, b.relic)
 	})
 	return out
 }
@@ -157,6 +157,12 @@ func (m *Model) openRelics() {
 }
 
 func (m Model) relicKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.recounting {
+		return m.recountKey(k)
+	}
+	if m.relicOpen != nil {
+		return m.relicDetailKey(k)
+	}
 	if m.relicCounting {
 		return m.countKey(k)
 	}
@@ -194,6 +200,11 @@ func (m Model) relicKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "o":
 		m.relicMine = !m.relicMine
 		m.relicAt, m.relicTop = 0, 0
+	case "s":
+		// Keep the cursor on the same relic, now somewhere else.
+		r := m.selectedRelic()
+		m.relicByName = !m.relicByName
+		m.followRelic(r)
 	case "+", "=", "-":
 		if r := m.selectedRelic(); r != nil {
 			step := 1
@@ -205,6 +216,14 @@ func (m Model) relicKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.save()
 			m.followRelic(r) // in "my relics", a relic at 0 drops out of the list
 		}
+	case "enter":
+		if r := m.selectedRelic(); r != nil {
+			m.openRelic(r)
+		}
+		return m, nil
+	case "r":
+		m.startRecount()
+		return m, nil
 	case "c", "#":
 		m.relicCounting, m.relicMsg = true, ""
 		return m, m.relicCount.Focus()
@@ -239,10 +258,19 @@ func (m *Model) followRelic(r *relics.Relic) {
 	m.relicAt = min(m.relicAt, max(len(es)-1, 0))
 }
 
+// entryLines is how many lines a relic takes in the finder: one when
+// sorted by name (a compact list for browsing), else one per reward too.
+func (m Model) entryLines(e relicEntry) int {
+	if m.relicByName {
+		return 1
+	}
+	return 1 + len(e.rows)
+}
+
 // relicRows is how many lines the finder has for relics, after the
 // heading, the footer and the count box when it's open.
 func (m Model) relicRows() int {
-	n := m.height - 13
+	n := m.height - 11 // the box's border and padding take 4, the heading 4, the footer 3
 	if m.relicCounting {
 		n -= 2
 	}
@@ -262,7 +290,7 @@ func (m *Model) scrollRelics() {
 	for m.relicTop < m.relicAt {
 		lines := 0
 		for i := m.relicTop; i <= m.relicAt; i++ {
-			lines += 1 + len(es[i].rows)
+			lines += m.entryLines(es[i])
 		}
 		if lines <= m.relicRows() {
 			break
@@ -272,6 +300,12 @@ func (m *Model) scrollRelics() {
 }
 
 func (m Model) relicView() string {
+	if m.recounting {
+		return m.recountView()
+	}
+	if m.relicOpen != nil {
+		return m.relicDetailView()
+	}
 	es := m.relicEntries()
 	searching := m.relicQuery.Value() != ""
 	var b strings.Builder
@@ -281,7 +315,7 @@ func (m Model) relicView() string {
 	case m.relicMine && searching:
 		scope = "Your relics matching the search"
 	case m.relicMine:
-		scope = fmt.Sprintf("Your relics · %d held in all", m.heldRelics())
+		scope = fmt.Sprintf("Your relics · %d held · %s (r)", m.heldRelics(), m.countedAgo())
 	case searching:
 		scope = "Every relic, vaulted too"
 	case m.relicVaulted:
@@ -289,7 +323,11 @@ func (m Model) relicView() string {
 	default:
 		scope = "Relics holding parts you still need · farmable or held"
 	}
-	b.WriteString(sSub.Render(fmt.Sprintf("%s · %d relics", scope, len(es))) + "\n")
+	order := "most needed first"
+	if m.relicByName {
+		order = "by name, one line each"
+	}
+	b.WriteString(sSub.Render(trunc(fmt.Sprintf("%s · %d relics · %s", scope, len(es), order), max(20, m.width-6))) + "\n")
 	switch {
 	case m.relicTyping:
 		b.WriteString(m.relicQuery.View() + "\n\n")
@@ -298,37 +336,56 @@ func (m Model) relicView() string {
 	default:
 		b.WriteString(sDim.Render("/ search parts or relics") + "\n\n")
 	}
+	lines := 0 // of the m.relicRows() the list has
 	switch {
 	case len(es) > 0:
 	case searching:
 		b.WriteString(sDim.Render("No relic here holds anything by that name.") + "\n")
+		lines = 1
 	case m.relicMine:
 		b.WriteString(sDim.Render("No relics counted yet. Press c and type them in, e.g.") + "\n")
 		b.WriteString(sDim.Render("  a s8 12, l n1 4, meso s3 2") + "\n")
+		lines = 2
 	default:
 		b.WriteString(sDim.Render("Nothing to farm: every part you're missing is in vaulted relics,") + "\n")
 		b.WriteString(sDim.Render("or the parts list is all checked off. Press v to include vaulted.") + "\n")
+		lines = 2
 	}
 
 	// Outside the plain "parts you need" list, rows aren't all needed, so
 	// the needed ones get a mark.
 	marked := searching || m.relicMine
-	lines := 0
-	for i := m.relicTop; i < len(es) && lines+1+len(es[i].rows) <= m.relicRows(); i++ {
+	for i := m.relicTop; i < len(es) && lines+m.entryLines(es[i]) <= m.relicRows(); i++ {
 		e := es[i]
-		sel, name := "  ", sText.Bold(true).Render(pad(e.relic.Name, 10))
+		sel, name := "  ", sText.Bold(true).Render(pad(e.relic.Name, 12))
 		if i == m.relicAt {
-			sel, name = sGold.Render("▸ "), sTitle.Render(pad(e.relic.Name, 10))
+			sel, name = sGold.Render("▸ "), sTitle.Render(pad(e.relic.Name, 12))
 		}
 		held := "    "
 		if n := m.prog.HeldRelics(e.relic.Name); n > 0 {
 			held = sGold.Render(pad(fmt.Sprintf("×%d", n), 4))
 		}
 		state := sNew.Render("farmable")
-		if !e.relic.Farmable {
-			state = sDim.Render("vaulted")
+		switch {
+		case e.relic.Event():
+			state = sDim.Render("event   ")
+		case !e.relic.Farmable:
+			state = sDim.Render("vaulted ")
 		}
-		b.WriteString(sel + name + held + " " + sDim.Render(fmt.Sprintf("%d needed  ", e.wanted())) + state + "\n")
+		line := sel + name + held + " " + sDim.Render(fmt.Sprintf("%d needed  ", e.wanted())) + state
+		if m.relicByName {
+			// One line per relic, the needed parts squeezed in after it.
+			var names []string
+			for _, r := range e.rows {
+				if r.needed {
+					names = append(names, r.name)
+				}
+			}
+			b.WriteString(trunc(line+"  "+sText.Render(strings.Join(names, ", ")), max(20, m.width-6)) + "\n")
+			lines++
+			continue
+		}
+		b.WriteString(line + "\n")
 		for _, r := range e.rows {
 			mark, st := "", sText
 			if marked {
@@ -339,8 +396,12 @@ func (m Model) relicView() string {
 			}
 			b.WriteString("     " + mark + st.Render(pad(trunc(r.name, 40), 41)) + chance(r.reward) + "\n")
 		}
-		lines += 1 + len(e.rows)
+		lines += m.entryLines(e)
 	}
+
+	// Blank lines down to the footer, so it stays put at the bottom however
+	// long the list is.
+	b.WriteString(strings.Repeat("\n", max(m.relicRows()-lines, 0)))
 
 	// The modal's border and padding take 6 columns; long lines are cut so
 	// the box never grows past the window.
@@ -363,7 +424,7 @@ func (m Model) relicView() string {
 		legend = "● part you still need · " + legend
 	}
 	b.WriteString(sDim.Render(trunc(legend, w)) + "\n")
-	keys := "j/k move · / search · o my relics · c count · +/- one · v vaulted · esc close"
+	keys := "j/k move · enter open · / search · s sort · o my relics · c count · +/- one · v vaulted · esc"
 	if m.relicCounting {
 		keys = "enter saves and stays open · esc done"
 	}

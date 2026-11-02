@@ -50,9 +50,12 @@ type Progress struct {
 	Parts map[string]map[string]int `json:"parts,omitempty"`
 	// Relics counts the void relics held, by name ("Axi S8"), refinements
 	// together.
-	Relics   map[string]int `json:"relics,omitempty"`
-	Settings Settings       `json:"settings"`
-	Updated  time.Time      `json:"updated"`
+	Relics map[string]int `json:"relics,omitempty"`
+	// RelicsCounted is when the relic counts were last checked against the
+	// game, by finishing a recount.
+	RelicsCounted time.Time `json:"relicsCounted,omitzero"`
+	Settings      Settings  `json:"settings"`
+	Updated       time.Time `json:"updated"`
 }
 
 func New() *Progress {
@@ -163,7 +166,8 @@ func (p *Progress) Import(path string) error {
 	if err != nil {
 		return err
 	}
-	p.Marks, p.Parts, p.Relics, p.Extra = in.Marks, in.Parts, in.Relics, in.Extra
+	p.Marks, p.Parts, p.Extra = in.Marks, in.Parts, in.Extra
+	p.Relics, p.RelicsCounted = in.Relics, in.RelicsCounted
 	return nil
 }
 

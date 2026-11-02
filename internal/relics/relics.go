@@ -8,11 +8,15 @@ import (
 	"os"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
+	"unicode"
 )
 
-// Tiers in the order they unlock.
-var Tiers = []string{"Lith", "Meso", "Neo", "Axi"}
+// Tiers in the order they unlock, then Vanguard: a handful of relics from
+// a one-off event that hold ordinary prime parts but will likely never
+// drop again.
+var Tiers = []string{"Lith", "Meso", "Neo", "Axi", "Vanguard"}
 
 // Reward is one possible drop from a relic.
 type Reward struct {
@@ -26,7 +30,14 @@ type Relic struct {
 	Tier     int    // index into Tiers
 	Farmable bool   // drops from some mission or bounty right now
 	Rewards  []Reward
+
+	Missions  []Source // likeliest first
+	Elsewhere []string // other kinds of source, e.g. "Cetus bounties"
 }
+
+// Event reports whether r came from an event rather than the star chart,
+// so it's gone for good rather than vaulted.
+func (r *Relic) Event() bool { return Tiers[r.Tier] == "Vanguard" }
 
 // Drop is a relic that can give a particular item.
 type Drop struct {
@@ -53,7 +64,7 @@ type rawFile struct {
 
 // relicDrop matches a relic given as a reward anywhere else in the file:
 // missions, bounties and so on. A relic that appears nowhere is vaulted.
-var relicDrop = regexp.MustCompile(`"itemName":\s*"(Lith|Meso|Neo|Axi) (\w+) Relic`)
+var relicDrop = regexp.MustCompile(`"itemName":\s*"(Lith|Meso|Neo|Axi|Vanguard) (\w+) Relic`)
 
 // Load parses the drop tables file (all.json from drops.warframestat.us).
 func Load(path string) (*Table, error) {
@@ -105,10 +116,15 @@ func Load(path string) (*Table, error) {
 		}
 	}
 
+	if err := addSources(b, byName); err != nil {
+		return nil, err
+	}
+
 	for _, rel := range t.Relics {
 		for i := range rel.Rewards {
 			rel.Rewards[i].Rarity = rarity(rel.Rewards[i].Intact)
 		}
+		sort.SliceStable(rel.Rewards, func(i, j int) bool { return rel.Rewards[i].Intact > rel.Rewards[j].Intact })
 		for _, rw := range rel.Rewards {
 			k := strings.ToLower(rw.Item)
 			t.byItem[k] = append(t.byItem[k], Drop{rel, rw})
@@ -117,14 +133,37 @@ func Load(path string) (*Table, error) {
 	for _, ds := range t.byItem {
 		sort.Slice(ds, func(i, j int) bool { return better(ds[i], ds[j]) })
 	}
-	sort.Slice(t.Relics, func(i, j int) bool {
-		a, b := t.Relics[i], t.Relics[j]
-		if a.Tier != b.Tier {
-			return a.Tier < b.Tier
-		}
-		return a.Name < b.Name
-	})
+	sort.Slice(t.Relics, func(i, j int) bool { return Less(t.Relics[i], t.Relics[j]) })
 	return t, nil
+}
+
+// Less orders relics as a player would list them: by tier, then by letter,
+// then by number, so Lith A2 comes before Lith A13.
+func Less(a, b *Relic) bool {
+	if a.Tier != b.Tier {
+		return a.Tier < b.Tier
+	}
+	al, an := splitCode(a.Name)
+	bl, bn := splitCode(b.Name)
+	if al != bl {
+		return al < bl
+	}
+	if an != bn {
+		return an < bn
+	}
+	return a.Name < b.Name
+}
+
+// splitCode splits a relic's code into letters and number: "Lith A13" gives
+// "A" and 13.
+func splitCode(name string) (string, int) {
+	code := name[strings.IndexByte(name, ' ')+1:]
+	i := strings.IndexFunc(code, unicode.IsDigit)
+	if i < 0 {
+		return code, 0
+	}
+	n, _ := strconv.Atoi(code[i:])
+	return code[:i], n
 }
 
 // better orders drops: farmable relics first, then the likelier drop, then
@@ -136,10 +175,7 @@ func better(a, b Drop) bool {
 	if a.Reward.Intact != b.Reward.Intact {
 		return a.Reward.Intact > b.Reward.Intact
 	}
-	if a.Relic.Tier != b.Relic.Tier {
-		return a.Relic.Tier < b.Relic.Tier
-	}
-	return a.Relic.Name < b.Relic.Name
+	return Less(a.Relic, b.Relic)
 }
 
 // Match finds where each of an item's parts drops, best relic first; parts

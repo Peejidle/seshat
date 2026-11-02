@@ -145,7 +145,7 @@ func (m Model) View() string {
 	case mImport:
 		return m.overlay(m.importView())
 	case mRelics:
-		return m.overlay(m.relicView())
+		return m.overlayFull(m.relicView())
 	case mDetail:
 		if it, ok := m.current(); ok {
 			body := m.detail(it, paneWidth+4, 0)
@@ -527,6 +527,14 @@ func (m Model) overlay(content string) string {
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, sModal.Render(content))
 }
 
+// overlayFull draws a modal that fills the window whatever its content, for
+// views you scroll through: a box that grew and shrank with each screen of
+// text would jump around under you. Width and Height include the padding
+// but not the border, hence the 2s.
+func (m Model) overlayFull(content string) string {
+	return sModal.Width(m.width - 2).Height(m.height - 2).Render(content)
+}
+
 func (m Model) helpView() string {
 	rows := [][2]string{
 		{"space / m", "toggle mastered (also marks owned)"},
@@ -540,7 +548,7 @@ func (m Model) helpView() string {
 		{"f", "cycle filter: all, owned, in progress, collecting, mastered, new"},
 		{"s", "cycle sort: name, type, newest"},
 		{"enter", "details: check off parts with j/k and p (a = all)"},
-		{"R", "relic finder · / look up a part · c count relics · o yours"},
+		{"R", "relic finder · enter a relic · / look up · c count · o yours · r recount"},
 		{"w / i", "open the wiki page / full-size image"},
 		{"T", "theme: follow terminal colours, or Seshat's own"},
 		{"x", "ledger: star chart, steel path & intrinsic XP"},
