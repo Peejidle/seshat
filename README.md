@@ -52,6 +52,7 @@ In the TUI press `?` for every key. The main ones:
 | `enter` | details with a large image; check off parts there (`j`/`k` pick, `p` have it, `a` all/none) |
 | `w` / `i` | open the wiki page (drop locations) / the full-size image |
 | `T` | theme: follow your terminal's colours (default), or Seshat's own |
+| `R` | relic finder: farmable relics holding parts you need |
 | `x` | ledger: star chart & steel path XP, intrinsic ranks, for the MR estimate |
 | `u` | sync item data now |
 | `P` | import mastery from your saved Warframe profile |
@@ -66,6 +67,21 @@ too. Resources aren't shown: WFCD only has the final recipe's resources,
 not each part's, so any total would be wrong. Items you're
 collecting show `▪2/4` in the list until you mark them owned, and the
 `collecting parts` filter (`f`) lists them all — handy before a relic run.
+
+## Relic finder
+
+Press `R` for every relic that holds a part you still need — parts of
+items you haven't built or mastered and haven't checked off — with the
+relics holding the most of them first. Each part shows its rarity and its
+chance intact → radiant. By default only relics you can farm right now are
+listed; `v` adds vaulted ones (for trading or Prime Resurgence).
+
+The details view also shows, under each missing part, the best farmable
+relics for it, or how many vaulted relics hold it.
+
+Relic contents come from [WFCD's mirror](https://drops.warframestat.us) of
+DE's published drop tables, synced with the rest of the archive. A relic
+counts as farmable when some mission or bounty in those tables drops it.
 
 ## Weapons needed for other weapons
 

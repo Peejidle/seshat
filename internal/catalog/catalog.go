@@ -314,6 +314,7 @@ var (
 		{"Boot", "Boot"}, {"Gauntlet", "Gauntlet"}, {"Carapace", "Carapace"},
 		{"Cerebrum", "Cerebrum"}, {"Harness", "Harness"}, {"Wings", "Wings"},
 		{"Blueprint", "Blueprint"}, {"Engine", "Engine"}, {"WeaponPod", "Weapon Pod"},
+		{"LowerLimb", "Lower Limb"}, {"UpperLimb", "Upper Limb"},
 	}
 )
 

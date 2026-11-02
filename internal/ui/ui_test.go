@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/Peejidle/seshat/internal/catalog"
+	"github.com/Peejidle/seshat/internal/relics"
 	"github.com/Peejidle/seshat/internal/store"
 )
 
@@ -135,5 +136,27 @@ func TestMarkInDetailsKeepsItem(t *testing.T) {
 	m = press(m, "q") // any other key closes; the hidden item then drops out
 	if it, _ := m.current(); it.Name == "Atlas" {
 		t.Errorf("Atlas is mastered and hidden, yet still selected after closing")
+	}
+}
+
+func TestRelicFinder(t *testing.T) {
+	m := testModel(t)
+	rel := &relics.Relic{Name: "Lith A1", Farmable: true}
+	m.items[0].Components = []catalog.Component{{ID: "bp", Name: "Blueprint", Count: 1, Part: true}}
+	m.items[1].Components = []catalog.Component{{ID: "bp2", Name: "Blueprint", Count: 1, Part: true}}
+	m.drops = map[string][]relics.Drop{
+		partKey("Ash", "bp"):    {{Relic: rel}},
+		partKey("Atlas", "bp2"): {{Relic: rel}},
+	}
+	m.relics = &relics.Table{}
+	m.prog.Set("Atlas", store.Mark{Owned: true}) // built already, so not needed
+	m = press(m, "R")
+	es := m.relicEntries()
+	if m.modal != mRelics || len(es) != 1 || len(es[0].needs) != 1 || es[0].needs[0].item != "Ash" {
+		t.Fatalf("entries = %+v", es)
+	}
+	m.prog.SetPart("Ash", "bp", 1) // now held
+	if es := m.relicEntries(); len(es) != 0 {
+		t.Errorf("held part still listed: %+v", es)
 	}
 }

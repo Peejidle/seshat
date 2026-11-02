@@ -144,6 +144,8 @@ func (m Model) View() string {
 		return m.overlay(m.ledgerView())
 	case mImport:
 		return m.overlay(m.importView())
+	case mRelics:
+		return m.overlay(m.relicView())
 	case mDetail:
 		if it, ok := m.current(); ok {
 			body := m.detail(it, paneWidth+4, 0)
@@ -445,7 +447,7 @@ func (m Model) detail(it catalog.Item, w, imgCols int) string {
 		held, need := m.partsProgress(it)
 		b.WriteString("\n" + sLapis.Render("Parts") + sDim.Render(fmt.Sprintf("  %d/%d", held, need)) + "\n")
 		for part, c := range parts {
-			n := c.Name
+			n := m.partLabel(it, c)
 			have := min(m.prog.HeldParts(it.ID, c.ID), c.Count)
 			box, st := sDim.Render("[ ]"), sText
 			switch {
@@ -462,6 +464,9 @@ func (m Model) detail(it catalog.Item, w, imgCols int) string {
 				sel, st = sGold.Render("▸ "), sTitle
 			}
 			b.WriteString(sel + box + " " + st.Render(trunc(n, w-8)) + "\n")
+			if ds := m.drops[partKey(it.ID, c.ID)]; len(ds) > 0 && m.stillNeeded(it, c) {
+				b.WriteString("      " + m.dropLine(ds, w-8) + "\n")
+			}
 		}
 		if m.modal == mDetail {
 			b.WriteString(sDim.Render("  ") + sKey.Render("j/k") + sDim.Render(" pick · ") +
@@ -513,7 +518,7 @@ func (m Model) hints() string {
 	k := func(key, what string) string { return sKey.Render(key) + sDim.Render(" "+what) }
 	return trunc(" "+strings.Join([]string{
 		k("space", "mastered"), k("o", "owned"), k("v", "select"), k("H", "hide mastered"), k("/", "search"), k("f", "filter"),
-		k("s", "sort"), k("⇥", "category"), k("enter", "details"), k("x", "ledger"),
+		k("s", "sort"), k("⇥", "category"), k("enter", "details"), k("R", "relics"), k("x", "ledger"),
 		k("u", "sync"), k("?", "help"), k("q", "quit"),
 	}, sDim.Render(" · ")), m.width)
 }
@@ -535,6 +540,7 @@ func (m Model) helpView() string {
 		{"f", "cycle filter: all, owned, in progress, collecting, mastered, new"},
 		{"s", "cycle sort: name, type, newest"},
 		{"enter", "details: check off parts with j/k and p (a = all)"},
+		{"R", "relic finder: farmable relics with parts you need"},
 		{"w / i", "open the wiki page / full-size image"},
 		{"T", "theme: follow terminal colours, or Seshat's own"},
 		{"x", "ledger: star chart, steel path & intrinsic XP"},

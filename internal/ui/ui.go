@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Peejidle/seshat/internal/catalog"
+	"github.com/Peejidle/seshat/internal/relics"
 	"github.com/Peejidle/seshat/internal/store"
 	"github.com/Peejidle/seshat/internal/termimg"
 )
@@ -63,6 +64,7 @@ const (
 	mLedger
 	mImport
 	mDetail
+	mRelics
 )
 
 // tab 0 is "All"; tab i>0 is catalog.Categories[i-1].
@@ -73,6 +75,8 @@ type Model struct {
 	prog  *store.Progress
 
 	items   []catalog.Item
+	relics  *relics.Table            // nil until the drop tables are cached
+	drops   map[string][]relics.Drop // partKey -> relics that drop it, best first
 	newIDs  map[string]bool
 	visible []int // indexes into items
 	loading string
@@ -94,6 +98,9 @@ type Model struct {
 	fromProf bool // the import modal reads a Warframe profile, not a backup
 	partAt   int  // selected part in the details view
 
+	relicAt, relicTop int  // selected and first shown relic in the finder
+	relicVaulted      bool // the finder includes vaulted relics
+
 	imgMode termimg.Mode
 	images  map[string]string // imgKey(name, cols) -> rendered, "" while pending
 	imgErr  map[string]bool   // imageName -> failed to download or decode
@@ -106,8 +113,9 @@ type Model struct {
 
 type (
 	catalogMsg struct {
-		items []catalog.Item
-		err   error
+		items  []catalog.Item
+		relics *relics.Table // nil if the drop tables couldn't be read
+		err    error
 	}
 	refreshMsg struct {
 		changed int
@@ -158,7 +166,9 @@ func (m Model) Init() tea.Cmd {
 func loadCatalog(dir string) tea.Cmd {
 	return func() tea.Msg {
 		items, err := catalog.Load(dir)
-		return catalogMsg{items, err}
+		// Relic data is optional: everything else works without it.
+		table, _ := relics.Load(filepath.Join(dir, catalog.DropsFile))
+		return catalogMsg{items, table, err}
 	}
 }
 
@@ -198,7 +208,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.fail("archive unreadable: %v (press u to re-sync)", msg.err)
 			return m, nil
 		}
-		m.items = msg.items
+		m.items, m.relics = msg.items, msg.relics
+		m.matchDrops()
 		m.markNew()
 		m.rebuild()
 		return m, m.wantImage()
@@ -293,6 +304,8 @@ func (m Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.ledgerKey(k)
 	case mImport:
 		return m.importKey(k)
+	case mRelics:
+		return m.relicKey(k)
 	}
 
 	if m.searching {
@@ -441,6 +454,9 @@ func (m Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "x":
 		m.openLedger()
+		return m, nil
+	case "R":
+		m.openRelics()
 		return m, nil
 	case "E":
 		home, _ := os.UserHomeDir()

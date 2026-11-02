@@ -13,7 +13,23 @@ import (
 const (
 	dataURL  = "https://raw.githubusercontent.com/WFCD/warframe-items/master/data/json/"
 	imageURL = "https://raw.githubusercontent.com/WFCD/warframe-items/master/data/img/"
+	// WFCD's mirror of DE's published drop tables, for relic contents.
+	dropsURL = "https://drops.warframestat.us/data/all.json"
 )
+
+// DropsFile is the cached drop tables, read by package relics.
+const DropsFile = "drops.json"
+
+type source struct{ file, url string }
+
+// sources lists every file Refresh keeps cached.
+func sources() []source {
+	var s []source
+	for _, f := range SourceFiles {
+		s = append(s, source{f + ".json", dataURL + f + ".json"})
+	}
+	return append(s, source{DropsFile, dropsURL})
+}
 
 var client = &http.Client{Timeout: 60 * time.Second}
 
@@ -35,8 +51,8 @@ func readMeta(dir string) meta {
 
 // HasCache reports whether every source file is present locally.
 func HasCache(dir string) bool {
-	for _, f := range SourceFiles {
-		if _, err := os.Stat(filepath.Join(dir, f+".json")); err != nil {
+	for _, s := range sources() {
+		if _, err := os.Stat(filepath.Join(dir, s.file)); err != nil {
 			return false
 		}
 	}
@@ -54,10 +70,10 @@ func Refresh(dir string) (int, error) {
 	}
 	m := readMeta(dir)
 	changed := 0
-	for _, f := range SourceFiles {
-		path := filepath.Join(dir, f+".json")
-		req, _ := http.NewRequest("GET", dataURL+f+".json", nil)
-		if et := m.ETags[f]; et != "" {
+	for _, s := range sources() {
+		path := filepath.Join(dir, s.file)
+		req, _ := http.NewRequest("GET", s.url, nil)
+		if et := m.ETags[s.file]; et != "" {
 			if _, err := os.Stat(path); err == nil {
 				req.Header.Set("If-None-Match", et)
 			}
@@ -72,14 +88,14 @@ func Refresh(dir string) (int, error) {
 		}
 		if resp.StatusCode != http.StatusOK {
 			resp.Body.Close()
-			return changed, fmt.Errorf("%s: %s", f, resp.Status)
+			return changed, fmt.Errorf("%s: %s", s.file, resp.Status)
 		}
 		err = writeAtomic(path, resp.Body)
 		resp.Body.Close()
 		if err != nil {
 			return changed, err
 		}
-		m.ETags[f] = resp.Header.Get("ETag")
+		m.ETags[s.file] = resp.Header.Get("ETag")
 		changed++
 	}
 	m.CheckedAt = time.Now()
