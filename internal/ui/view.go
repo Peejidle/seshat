@@ -559,13 +559,18 @@ func (m Model) ledgerView() string {
 	var b strings.Builder
 	b.WriteString(sTitle.Render("The Ledger") + "\n")
 	b.WriteString(sSub.Render("Mastery from sources the archive cannot count. Find these") + "\n")
-	b.WriteString(sSub.Render("in-game under Profile → Mastery Rank.") + "\n\n")
-	for i, l := range ledgerFields {
+	b.WriteString(sSub.Render("in-game under Profile → Mastery Rank. For intrinsics, add up") + "\n")
+	b.WriteString(sSub.Render("the rank (0–10) of every school; each rank is 1,500 xp.") + "\n\n")
+	for i, f := range ledgerFields {
 		cur := "  "
 		if i == m.ledgerAt {
 			cur = sGold.Render("▸ ")
 		}
-		b.WriteString(cur + sText.Render(pad(l, 22)) + m.ledger[i].View() + "\n")
+		unit := "xp"
+		if f.maxRank > 0 {
+			unit = fmt.Sprintf("ranks of %d, all schools added up", f.maxRank)
+		}
+		b.WriteString(cur + sText.Render(pad(f.label, 22)) + pad(m.ledger[i].View(), 13) + sDim.Render(unit) + "\n")
 	}
 
 	b.WriteString("\n" + sLapis.Render("Tally by category") + "\n")

@@ -470,7 +470,21 @@ func (m Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-var ledgerFields = []string{"Star Chart", "Steel Path", "Railjack intrinsics", "Drifter intrinsics", "Other"}
+// ledgerField is one ledger entry. Intrinsics are entered as total ranks,
+// the number the game shows, and stored as XP.
+type ledgerField struct {
+	label   string
+	perUnit int // XP per entered unit
+	maxRank int // 0 for XP fields
+}
+
+var ledgerFields = []ledgerField{
+	{"Star Chart", 1, 0},
+	{"Steel Path", 1, 0},
+	{"Railjack intrinsics", 1500, 50}, // 5 schools x rank 10
+	{"Drifter intrinsics", 1500, 40},  // 4 schools x rank 10
+	{"Other", 1, 0},
+}
 
 func (m *Model) extraPtrs() []*int {
 	e := &m.prog.Extra
@@ -486,7 +500,7 @@ func (m *Model) openLedger() {
 		t.Prompt = ""
 		t.CharLimit = 9
 		t.Width = 12
-		t.SetValue(strconv.Itoa(*p))
+		t.SetValue(strconv.Itoa(*p / ledgerFields[i].perUnit))
 		m.ledger[i] = t
 	}
 	m.ledger[0].Focus()
@@ -502,12 +516,17 @@ func (m Model) ledgerKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Save and move on, so several fields can be filled in one visit.
 		vals := make([]int, len(m.ledger))
 		for i := range m.ledger {
+			f := ledgerFields[i]
 			v, err := strconv.Atoi(strings.ReplaceAll(strings.TrimSpace(m.ledger[i].Value()), ",", ""))
-			if err != nil || v < 0 {
-				m.fail("%s must be a whole number", ledgerFields[i])
+			switch {
+			case err != nil || v < 0:
+				m.fail("%s must be a whole number", f.label)
+				return m, nil
+			case f.maxRank > 0 && v > f.maxRank:
+				m.fail("%s: %d ranks at most (every school at 10)", f.label, f.maxRank)
 				return m, nil
 			}
-			vals[i] = v
+			vals[i] = v * f.perUnit
 		}
 		for i, p := range m.extraPtrs() {
 			*p = vals[i]

@@ -109,6 +109,18 @@ func TestLedgerStaysOpen(t *testing.T) {
 	if m = mm.(Model); !m.statusErr || m.ledgerAt != 1 {
 		t.Errorf("bad number should be rejected in place")
 	}
+	m.ledger[1].SetValue("0")
+	m.ledger[2].SetValue("25") // Railjack intrinsic ranks
+	mm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if m = mm.(Model); m.prog.Extra.Railjack != 25*1500 {
+		t.Errorf("25 Railjack ranks stored as %d xp, want %d", m.prog.Extra.Railjack, 25*1500)
+	}
+	m.ledger[2].SetValue("51")
+	mm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if m = mm.(Model); !m.statusErr {
+		t.Errorf("51 Railjack ranks should be rejected")
+	}
+	m.ledger[2].SetValue("25")
 	mm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	if m = mm.(Model); m.modal != mNone || m.prog.Extra.StarChart != 1000 {
 		t.Errorf("esc should close and keep what was saved")

@@ -52,7 +52,7 @@ In the TUI press `?` for every key. The main ones:
 | `enter` | details with a large image; check off parts there (`j`/`k` pick, `p` have it, `a` all/none) |
 | `w` / `i` | open the wiki page (drop locations) / the full-size image |
 | `T` | theme: follow your terminal's colours (default), or Seshat's own |
-| `x` | ledger: star chart, steel path & intrinsics XP for the MR estimate |
+| `x` | ledger: star chart & steel path XP, intrinsic ranks, for the MR estimate |
 | `u` | sync item data now |
 | `P` | import mastery from your saved Warframe profile |
 
@@ -116,9 +116,11 @@ Items that weren't there before are marked `✦` until you quit, and the
 
 Item XP is max rank × 100 for weapons and amps, or × 200 for Warframes,
 companions, Archwings, Necramechs, K-Drives and the Plexus. Kuva, Tenet and
-Coda weapons and Necramechs rank to 40. Star chart, Steel Path and
-Railjack/Drifter intrinsics XP can't be enumerated, so enter them in the
-ledger (`x`) from your in-game profile.
+Coda weapons and Necramechs rank to 40. Star chart and Steel Path XP
+can't be enumerated, so enter them in the ledger (`x`) from your in-game
+profile. Intrinsics are entered as ranks: add up every school's rank (each
+0–10), so Railjack is out of 50 and Drifter out of 40. Each rank is worth
+1,500 mastery XP.
 
 WFCD's `masterable` flag is unreliable for modular gear, so Seshat applies
 its own rules: amp prisms, kitgun chambers and K-Drive decks count; other
