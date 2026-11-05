@@ -2,6 +2,8 @@ package ui
 
 import (
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -315,5 +317,77 @@ func TestRecount(t *testing.T) {
 	}
 	if m.prog.RelicsCounted.IsZero() || m.countedAgo() != "recounted today" {
 		t.Errorf("not stamped: %v", m.prog.RelicsCounted)
+	}
+}
+
+func TestNextUp(t *testing.T) {
+	m := testModel(t) // Ash, Atlas, Banshee, Caliban: frames, 6,000 XP each
+	bp := catalog.Component{ID: "bp", Name: "Blueprint", Count: 1, Part: true}
+	chassis := catalog.Component{ID: "ch", Name: "Chassis", Count: 1, Part: true}
+	// Ash: a Market blueprint, but parts to farm.
+	m.items[0].CreditBP = 35000
+	m.items[0].Components = []catalog.Component{bp, chassis}
+	// Atlas: every part held.
+	m.items[1].Components = []catalog.Component{bp, chassis}
+	// Banshee: a dojo blueprint, then only resources.
+	m.items[2].CreditBP, m.items[2].Dojo = 15000, true
+	m.items[2].Components = []catalog.Component{bp}
+	// Caliban: no easy route, so not listed.
+	m.items[3].Components = []catalog.Component{bp}
+	m.prog.SetPart("Atlas", "bp", 1)
+	m.prog.SetPart("Atlas", "ch", 1)
+
+	var got []string
+	for _, n := range m.nextItems() {
+		got = append(got, m.items[n.idx].Name)
+	}
+	if strings.Join(got, ",") != "Atlas,Banshee,Ash" {
+		t.Errorf("next up = %v, want ready to build, then dojo, then farm", got)
+	}
+
+	m = press(m, "N")
+	mm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = mm.(Model)
+	if it, _ := m.current(); m.modal != mDetail || it.Name != "Atlas" {
+		t.Fatalf("enter should open Atlas's details, got %v %s", m.modal, it.Name)
+	}
+	m = press(m, "m", "q") // master it from the details, then go back
+	if m.modal != mNext || len(m.nextItems()) != 2 {
+		t.Errorf("back in next up with Atlas gone: modal %v, %d items", m.modal, len(m.nextItems()))
+	}
+}
+
+func TestNextUpHeldRelicsAndStarted(t *testing.T) {
+	m := testModel(t)
+	bp := catalog.Component{ID: "bp", Name: "Blueprint", Count: 1, Part: true}
+	ch := catalog.Component{ID: "ch", Name: "Chassis", Count: 1, Part: true}
+	nv := catalog.Component{ID: "nv", Name: "Neuroptics", Count: 1, Part: true}
+	vaulted := &relics.Relic{Name: "Lith O3"}
+	// Ash Prime: chassis held, blueprint only in a vaulted relic you hold.
+	m.items[0].Prime = true
+	m.items[0].Components = []catalog.Component{bp, ch}
+	m.drops = map[string][]relics.Drop{partKey("Ash", "bp"): {{Relic: vaulted}}}
+	m.prog.SetPart("Ash", "ch", 1)
+	// Atlas: 1 of 3 parts, Banshee: 2 of 3, from nowhere Seshat knows.
+	for _, n := range []string{"Atlas", "Banshee"} {
+		m.items[slices.IndexFunc(m.items, func(it catalog.Item) bool { return it.Name == n })].Components = []catalog.Component{bp, ch, nv}
+	}
+	m.prog.SetPart("Atlas", "bp", 1)
+	m.prog.SetPart("Banshee", "bp", 1)
+	m.prog.SetPart("Banshee", "ch", 1)
+
+	names := func() string {
+		var got []string
+		for _, n := range m.nextItems() {
+			got = append(got, m.items[n.idx].Name)
+		}
+		return strings.Join(got, ",")
+	}
+	if got := names(); got != "Ash,Banshee,Atlas" {
+		t.Errorf("without the relic: %s, want Ash as started, then fewest parts missing", got)
+	}
+	m.prog.SetRelics("Lith O3", 1)
+	if r, _, _ := m.routeFor(m.items[0]); r != rRelics {
+		t.Errorf("holding the vaulted relic should make Ash Prime a relic route, got %v", r)
 	}
 }

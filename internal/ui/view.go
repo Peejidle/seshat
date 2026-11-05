@@ -146,6 +146,8 @@ func (m Model) View() string {
 		return m.overlay(m.importView())
 	case mRelics:
 		return m.overlayFull(m.relicView())
+	case mNext:
+		return m.overlayFull(m.nextView())
 	case mDetail:
 		if it, ok := m.current(); ok {
 			body := m.detail(it, paneWidth+4, 0)
@@ -518,7 +520,7 @@ func (m Model) hints() string {
 	k := func(key, what string) string { return sKey.Render(key) + sDim.Render(" "+what) }
 	return trunc(" "+strings.Join([]string{
 		k("space", "mastered"), k("o", "owned"), k("v", "select"), k("H", "hide mastered"), k("/", "search"), k("f", "filter"),
-		k("s", "sort"), k("⇥", "category"), k("enter", "details"), k("R", "relics"), k("x", "ledger"),
+		k("s", "sort"), k("⇥", "category"), k("enter", "details"), k("N", "next up"), k("R", "relics"), k("x", "ledger"),
 		k("u", "sync"), k("?", "help"), k("q", "quit"),
 	}, sDim.Render(" · ")), m.width)
 }
@@ -548,6 +550,7 @@ func (m Model) helpView() string {
 		{"f", "cycle filter: all, owned, in progress, collecting, mastered, new"},
 		{"s", "cycle sort: name, type, newest"},
 		{"enter", "details: check off parts with j/k and p (a = all)"},
+		{"N", "next up: the easiest items left to master, with XP to each rank"},
 		{"R", "relic finder · enter a relic · / look up · c count · o yours · r recount"},
 		{"w / i", "open the wiki page / full-size image"},
 		{"T", "theme: follow terminal colours, or Seshat's own"},

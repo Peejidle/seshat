@@ -66,6 +66,11 @@ type Item struct {
 	WikiURL     string
 	Components  []Component
 	UsedIn      []Use // recipes that consume this item, e.g. Bronco -> Akbronco
+
+	// How it's bought, where WFCD knows.
+	CreditBP int  // blueprint price in credits, in the Market or the dojo
+	Platinum int  // price of the built item in the Market
+	Dojo     bool // a clan dojo research blueprint
 }
 
 // MasteryXP is the account mastery granted by ranking the item to max.
@@ -114,6 +119,8 @@ type rawItem struct {
 	} `json:"introduced"`
 	Vaulted    bool   `json:"vaulted"`
 	IsPrime    bool   `json:"isPrime"`
+	BPCost     int    `json:"bpCost"`
+	MarketCost int    `json:"marketCost"`
 	WikiaURL   string `json:"wikiaUrl"`
 	Components []struct {
 		UniqueName string `json:"uniqueName"`
@@ -215,6 +222,52 @@ func isPart(u string) bool {
 		strings.Contains(u, "/Resources/Mechs/") // Necramech parts
 }
 
+// listedDojo is dojo research the data gives no sign of, by name: the whole
+// Tenno Lab, whose research lives under ordinary /Tenno/ paths and looks
+// just like Market items, plus the odd item from the other labs with no
+// credits price. Checked against the game's labs in November 2026.
+var listedDojo = map[string]bool{
+	// Tenno Lab warframes (Volt's main blueprint is in the Market, his parts here)
+	"Banshee": true, "Nezha": true, "Volt": true, "Wukong": true, "Zephyr": true,
+	// Primary
+	"Veldt": true, "Tenora": true, "Baza": true, "Sybaris": true, "Daikyu": true,
+	"Attica": true, "Scourge": true,
+	// Secondary
+	"Akstiletto": true, "Zakti": true, "Pyrana": true, "Castanas": true, "Talons": true,
+	// Melee
+	"Gunsen": true, "Nikana": true, "Venka": true, "Anku": true, "Cassowar": true,
+	"Dual Raza": true, "Gazal Machete": true, "Nami Skyla": true, "Tonbo": true,
+	"Venato": true, "Shaku": true, "Okina": true, "Masseter": true, "Lacera": true,
+	"Guandao": true, "Endura": true, "Dark Split-Sword": true, "Silva & Aegis": true,
+	// Archwing and its guns
+	"Fluctus": true, "Larkspur": true, "Velocitus": true,
+	"Amesha": true, "Elytron": true, "Itzal": true,
+	// Bio Lab
+	"Djinn": true,
+}
+
+// isDojo spots clan dojo research. WFCD doesn't say where a blueprint is
+// sold, but dojo ones cost credits and sit under ClanTech or need research
+// parts (Mutagen Mass, Fieldron and the like) to build. The Tenno Lab and
+// a few others are the exception, listed above.
+func isDojo(r rawItem) bool {
+	if listedDojo[r.Name] {
+		return true
+	}
+	if r.BPCost == 0 {
+		return false
+	}
+	if strings.Contains(r.UniqueName, "/ClanTech/") {
+		return true
+	}
+	for _, c := range r.Components {
+		if strings.Contains(c.UniqueName, "/ClanTech/") || strings.Contains(c.UniqueName, "/Items/Research/") {
+			return true
+		}
+	}
+	return false
+}
+
 // classify decides whether a raw entry counts for mastery and where it goes.
 // WFCD's masterable flag is right for whole items but wrong for modular
 // parts, so those are matched on uniqueName instead.
@@ -224,7 +277,8 @@ func classify(file string, r rawItem) (Item, bool) {
 		MasteryReq: r.MasteryReq, MaxRank: 30, XPPerRank: 100,
 		ImageName: r.ImageName, Description: r.Description,
 		ReleaseDate: r.ReleaseDate, Vaulted: r.Vaulted, Prime: r.IsPrime,
-		WikiURL: r.WikiaURL,
+		WikiURL: r.WikiaURL, CreditBP: r.BPCost, Platinum: r.MarketCost,
+		Dojo: isDojo(r),
 	}
 	if r.Introduced != nil {
 		it.Introduced = r.Introduced.Name

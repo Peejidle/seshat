@@ -45,3 +45,25 @@ func TestPartName(t *testing.T) {
 		}
 	}
 }
+
+func TestIsDojo(t *testing.T) {
+	kesheg := rawItem{Name: "Kesheg", BPCost: 15000, UniqueName: "/Lotus/Weapons/Grineer/Melee/GrineerHalberd/GrnHalberd"}
+	kesheg.Components = make([]struct {
+		UniqueName string `json:"uniqueName"`
+		ItemCount  int    `json:"itemCount"`
+	}, 1)
+	kesheg.Components[0].UniqueName = "/Lotus/Weapons/ClanTech/Chemical/GrnHalberdBlueprint"
+	for _, c := range []struct {
+		raw  rawItem
+		want bool
+	}{
+		{kesheg, true}, // Chem Lab: found by its ClanTech blueprint
+		{rawItem{Name: "Veldt", BPCost: 15000, UniqueName: "/Lotus/Weapons/Tenno/LongGuns/TnRevolverRifle/TnRevolverRifleGun"}, true}, // Tenno Lab: listed
+		{rawItem{Name: "Amesha", UniqueName: "/Lotus/Powersuits/Archwing/SupportJetPack/SupportJetPack"}, true},                       // listed, no bpCost
+		{rawItem{Name: "Boltor", BPCost: 15000, UniqueName: "/Lotus/Weapons/Tenno/Rifle/BoltoRifle"}, false},                          // Market
+	} {
+		if got := isDojo(c.raw); got != c.want {
+			t.Errorf("isDojo(%s) = %v, want %v", c.raw.Name, got, c.want)
+		}
+	}
+}

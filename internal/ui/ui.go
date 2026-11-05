@@ -65,6 +65,7 @@ const (
 	mImport
 	mDetail
 	mRelics
+	mNext
 )
 
 // tab 0 is "All"; tab i>0 is catalog.Categories[i-1].
@@ -97,6 +98,11 @@ type Model struct {
 	pathIn   textinput.Model
 	fromProf bool // the import modal reads a Warframe profile, not a backup
 	partAt   int  // selected part in the details view
+	// detailBack is the modal the details return to: none, or "next up"
+	// when opened from there.
+	detailBack modal
+
+	nextAt, nextTop int // selected item and first shown line in "next up"
 
 	relicAt, relicTop int  // selected and first shown relic in the finder
 	relicVaulted      bool // the finder includes vaulted relics
@@ -324,8 +330,12 @@ func (m Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.partKey(k.String())
 			return m, nil
 		default:
-			m.modal = mNone
+			m.modal, m.detailBack = m.detailBack, mNone
 			m.rebuildKeep() // marks made in the details may have filtered it out
+			if m.modal == mNext {
+				m.nextAt = min(m.nextAt, max(len(m.nextItems())-1, 0)) // it may be mastered now
+				m.scrollNext(m.nextItems())
+			}
 			return m, m.wantImage()
 		}
 	case mLedger:
@@ -334,6 +344,8 @@ func (m Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.importKey(k)
 	case mRelics:
 		return m.relicKey(k)
+	case mNext:
+		return m.nextKey(k)
 	}
 
 	if m.searching {
@@ -483,6 +495,8 @@ func (m Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "x":
 		m.openLedger()
 		return m, nil
+	case "N":
+		m.openNext()
 	case "R":
 		m.openRelics()
 		return m, nil

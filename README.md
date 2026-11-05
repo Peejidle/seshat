@@ -52,6 +52,7 @@ In the TUI press `?` for every key. The main ones:
 | `enter` | details with a large image; check off parts there (`j`/`k` pick, `p` have it, `a` all/none) |
 | `w` / `i` | open the wiki page (drop locations) / the full-size image |
 | `T` | theme: follow your terminal's colours (default), or Seshat's own |
+| `N` | next up: the easiest items left to master, and where each MR lands |
 | `R` | relic finder: relics holding parts you need; there `enter` opens one, `/` looks up any part or relic, `c` counts your relics, `o` lists them |
 | `x` | ledger: star chart & steel path XP, intrinsic ranks, for the MR estimate |
 | `u` | sync item data now |
@@ -137,6 +138,37 @@ Count them like any other: `v c1 2`.
 Relic contents come from [WFCD's mirror](https://drops.warframestat.us) of
 DE's published drop tables, synced with the rest of the archive. A relic
 counts as farmable when some mission or bounty in those tables drops it.
+
+## Next up: the easiest mastery left
+
+Press `N` for every item you haven't mastered that's easy to get, easiest
+first, with the most XP first within each group:
+
+1. **Owned: just level it**, including Kuva, Tenet and Coda weapons stuck
+   below rank 40.
+2. **Every part in hand**: straight to the foundry.
+3. **Market blueprint for credits, then resources.**
+4. **Clan dojo research**: blueprints and parts for credits, then
+   resources.
+5. **Prime with every missing part in a relic you can farm or already
+   hold** (counted in the relic finder).
+6. **Started: some parts in hand**, whatever the item, with the ones
+   missing fewest parts first.
+7. **Market blueprint, then parts from missions**, e.g. Warframes whose
+   parts drop from a boss.
+
+Each row shows the XP it gives and how much you'd still need for the next
+rank once it's mastered, and a line marks where each rank would be reached
+if you worked down the list. Credit and platinum prices are shown where
+WFCD has them. It follows the category tab (`2` then `N` for Warframes
+only), and `enter` opens an item's details and comes back. Items needing a
+higher MR than yours, and ones with no easy way in (vaulted primes, quests,
+Kuva Liches and so on), are left out.
+
+WFCD doesn't say where a blueprint is sold, so the dojo is told apart by
+its research parts (Chem, Bio, Energy and Orokin labs) and a list checked
+against the game (the Tenno Lab and a few strays). The odd item may
+still be in the wrong group.
 
 ## Weapons needed for other weapons
 
