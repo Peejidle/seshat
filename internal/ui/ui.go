@@ -98,6 +98,9 @@ type Model struct {
 	pathIn   textinput.Model
 	fromProf bool // the import modal reads a Warframe profile, not a backup
 	partAt   int  // selected part in the details view
+	// rankDigits is a rank being typed in the details view, for items
+	// levelled part way, such as a Kuva weapon at 34 of 40.
+	rankDigits string
 	// detailBack is the modal the details return to: none, or "next up"
 	// when opened from there.
 	detailBack modal
@@ -323,13 +326,32 @@ func (m Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.modal = mNone
 		return m, nil
 	case mDetail:
-		switch k.String() {
-		case "o", "m", " ", "w", "i":
+		key := k.String()
+		switch {
+		case key == "o", key == "m", key == " ", key == "w", key == "i":
 			// marking, the wiki link and the image viewer still work here
-		case "down", "j", "up", "k", "p", "a":
-			m.partKey(k.String())
+		case key == "down", key == "j", key == "up", key == "k", key == "p", key == "a":
+			m.partKey(key)
+			return m, nil
+		case len(key) == 1 && key[0] >= '0' && key[0] <= '9':
+			// Typing a number sets the rank once enter is pressed.
+			if len(m.rankDigits) < 2 {
+				m.rankDigits += key
+			}
+			return m, nil
+		case key == "backspace":
+			m.rankDigits = m.rankDigits[:max(len(m.rankDigits)-1, 0)]
+			return m, nil
+		case key == "enter" && m.rankDigits != "":
+			n, _ := strconv.Atoi(m.rankDigits)
+			m.setRank(n)
+			m.rankDigits = ""
+			return m, nil
+		case key == "esc" && m.rankDigits != "":
+			m.rankDigits = "" // first esc drops a half-typed rank
 			return m, nil
 		default:
+			m.rankDigits = ""
 			m.modal, m.detailBack = m.detailBack, mNone
 			m.rebuildKeep() // marks made in the details may have filtered it out
 			if m.modal == mNext {

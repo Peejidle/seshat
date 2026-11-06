@@ -172,6 +172,30 @@ func (m *Model) markMastered() {
 	m.relist()
 }
 
+// setRank records the highest rank reached on the current item. Its top
+// rank counts as mastered; anything less is partial XP, which is how a
+// Kuva, Tenet or Coda weapon somewhere between 30 and 40 gets its due.
+func (m *Model) setRank(n int) {
+	it, ok := m.current()
+	if !ok {
+		return
+	}
+	n = min(n, it.MaxRank)
+	mk := m.prog.Get(it.ID)
+	mk.Mastered, mk.Rank = n == it.MaxRank, n
+	if mk.Mastered {
+		mk.Rank = 0 // the full XP counts, so the rank says nothing more
+	}
+	if n > 0 {
+		mk.Owned = true
+	}
+	m.prog.Set(it.ID, mk)
+	m.say("%s — rank %d of %d: %s of %s XP", it.Name, n, it.MaxRank,
+		commas(it.EarnedXP(mk.Mastered, mk.Rank)), commas(it.MasteryXP()))
+	m.save()
+	m.relist()
+}
+
 // markOwned toggles ownership the same way as markMastered.
 func (m *Model) markOwned() {
 	ts := m.targets()

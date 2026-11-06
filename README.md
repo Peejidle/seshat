@@ -49,7 +49,7 @@ In the TUI press `?` for every key. The main ones:
 | `/` | search |
 | `f` | filter: all, owned but not mastered, in progress, collecting parts, mastered, new |
 | `s` | sort: name, type, newest release |
-| `enter` | details with a large image; check off parts there (`j`/`k` pick, `p` have it, `a` all/none) |
+| `enter` | details with a large image; check off parts there (`j`/`k` pick, `p` have it, `a` all/none), or type a number to set its rank |
 | `w` / `i` | open the wiki page (drop locations) / the full-size image |
 | `T` | theme: follow your terminal's colours (default), or Seshat's own |
 | `N` | next up: the easiest items left to master, and where each MR lands |
@@ -219,9 +219,10 @@ Items that weren't there before are marked `✦` until you quit, and the
 
 Item XP is max rank × 100 for weapons and amps, or × 200 for Warframes,
 companions, Archwings, Necramechs, K-Drives and the Plexus. Kuva, Tenet and
-Coda weapons and Necramechs rank to 40. Star chart and Steel Path XP
-can't be enumerated, so enter them in the ledger (`x`) from your in-game
-profile. Intrinsics are entered as ranks: add up every school's rank (each
+Coda weapons and Necramechs rank to 40: to count one part way, open its
+details and type the rank it has reached, e.g. `34` then `enter`. Star chart
+and Steel Path XP can't be enumerated, so enter them in the ledger (`x`)
+from your in-game profile: the XP itself, not how many nodes are done. Intrinsics are entered as ranks: add up every school's rank (each
 0–10), so Railjack is out of 50 and Drifter out of 40. Each rank is worth
 1,500 mastery XP.
 

@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/Peejidle/seshat/internal/catalog"
+	"github.com/Peejidle/seshat/internal/mastery"
 	"github.com/Peejidle/seshat/internal/relics"
 	"github.com/Peejidle/seshat/internal/store"
 )
@@ -389,5 +390,25 @@ func TestNextUpHeldRelicsAndStarted(t *testing.T) {
 	m.prog.SetRelics("Lith O3", 1)
 	if r, _, _ := m.routeFor(m.items[0]); r != rRelics {
 		t.Errorf("holding the vaulted relic should make Ash Prime a relic route, got %v", r)
+	}
+}
+
+func TestTypeRank(t *testing.T) {
+	m := testModel(t)
+	m.items[0].MaxRank, m.items[0].XPPerRank = 40, 100 // Ash as a Kuva weapon would be
+	m = press(m, "enter", "3", "4", "enter")
+	if mk := m.prog.Get("Ash"); mk.Rank != 34 || mk.Mastered || !mk.Owned || m.modal != mDetail {
+		t.Fatalf("after typing 34: %+v, modal %v", mk, m.modal)
+	}
+	if xp := m.items[0].EarnedXP(false, 34); mastery.Estimate(m.items, m.prog) != xp {
+		t.Errorf("estimate = %d, want %d", mastery.Estimate(m.items, m.prog), xp)
+	}
+	m = press(m, "9", "esc") // esc drops the half-typed rank, not the details
+	if m.rankDigits != "" || m.modal != mDetail || m.prog.Get("Ash").Rank != 34 {
+		t.Errorf("esc: digits %q, modal %v, rank %d", m.rankDigits, m.modal, m.prog.Get("Ash").Rank)
+	}
+	m = press(m, "4", "5", "enter") // past the top: mastered
+	if mk := m.prog.Get("Ash"); !mk.Mastered || mk.Rank != 0 {
+		t.Errorf("after typing 45: %+v, want mastered", mk)
 	}
 }

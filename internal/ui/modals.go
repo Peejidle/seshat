@@ -19,16 +19,19 @@ import (
 // the number the game shows, and stored as XP.
 type ledgerField struct {
 	label   string
-	perUnit int // XP per entered unit
-	maxRank int // 0 for XP fields
+	perUnit int    // XP per entered unit
+	maxRank int    // 0 for XP fields
+	unit    string // what to type, shown beside the box
 }
 
 var ledgerFields = []ledgerField{
-	{"Star Chart", 1, 0},
-	{"Steel Path", 1, 0},
-	{"Railjack intrinsics", 1500, 50}, // 5 schools x rank 10
-	{"Drifter intrinsics", 1500, 40},  // 4 schools x rank 10
-	{"Other", 1, 0},
+	// Nodes give different XP each, so a count of them can't be turned
+	// into XP: it has to be the game's own figure.
+	{"Star Chart", 1, 0, "xp, not the number of nodes"},
+	{"Steel Path", 1, 0, "xp, not the number of nodes"},
+	{"Railjack intrinsics", 1500, 50, "ranks of 50, all schools added up"}, // 5 schools x rank 10
+	{"Drifter intrinsics", 1500, 40, "ranks of 40, all schools added up"},  // 4 schools x rank 10
+	{"Other", 1, 0, "xp"},
 }
 
 func (m *Model) extraPtrs() []*int {

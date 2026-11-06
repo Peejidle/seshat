@@ -417,6 +417,13 @@ func (m Model) detail(it catalog.Item, w, imgCols int) string {
 		progress = sGold.Render(fmt.Sprintf("◐ Rank %d of %d", mk.Rank, it.MaxRank))
 	}
 	b.WriteString(progress + "   " + state(mk.Owned, "● Owned", "○ Not owned") + "\n")
+	if m.modal == mDetail {
+		if m.rankDigits != "" {
+			b.WriteString(sGold.Render("Set rank to "+m.rankDigits+"▌") + sDim.Render("  enter saves · esc cancels") + "\n")
+		} else {
+			b.WriteString(sDim.Render("type a number to set its rank") + "\n")
+		}
+	}
 	if !mk.Mastered && mk.Rank > 0 {
 		left := it.MasteryXP() - it.EarnedXP(false, mk.Rank)
 		b.WriteString(sDim.Render(fmt.Sprintf("%s XP still to earn", commas(left))) + "\n")
@@ -549,7 +556,7 @@ func (m Model) helpView() string {
 		{"H", "hide / show mastered items (remembered)"},
 		{"f", "cycle filter: all, owned, in progress, collecting, mastered, new"},
 		{"s", "cycle sort: name, type, newest"},
-		{"enter", "details: check off parts with j/k and p (a = all)"},
+		{"enter", "details: check off parts with j/k and p (a = all), type a rank"},
 		{"N", "next up: the easiest items left to master, with XP to each rank"},
 		{"R", "relic finder · enter a relic · / look up · c count · o yours · r recount"},
 		{"w / i", "open the wiki page / full-size image"},
@@ -583,11 +590,7 @@ func (m Model) ledgerView() string {
 		if i == m.ledgerAt {
 			sel = sGold.Render("▸ ")
 		}
-		unit := "xp"
-		if f.maxRank > 0 {
-			unit = fmt.Sprintf("ranks of %d, all schools added up", f.maxRank)
-		}
-		b.WriteString(sel + sText.Render(pad(f.label, 22)) + pad(m.ledger[i].View(), 13) + sDim.Render(unit) + "\n")
+		b.WriteString(sel + sText.Render(pad(f.label, 22)) + pad(m.ledger[i].View(), 13) + sDim.Render(f.unit) + "\n")
 	}
 
 	b.WriteString("\n" + sLapis.Render("Tally by category") + "\n")
