@@ -225,7 +225,8 @@ func isPart(u string) bool {
 // listedDojo is dojo research the data gives no sign of, by name: the whole
 // Tenno Lab, whose research lives under ordinary /Tenno/ paths and looks
 // just like Market items, plus the odd item from the other labs with no
-// credits price. Checked against the game's labs in November 2026.
+// credits price. Checked against every lab in the game in November 2026
+// (the Orokin Lab has nothing that counts for mastery).
 var listedDojo = map[string]bool{
 	// Tenno Lab warframes (Volt's main blueprint is in the Market, his parts here)
 	"Banshee": true, "Nezha": true, "Volt": true, "Wukong": true, "Zephyr": true,
@@ -242,8 +243,9 @@ var listedDojo = map[string]bool{
 	// Archwing and its guns
 	"Fluctus": true, "Larkspur": true, "Velocitus": true,
 	"Amesha": true, "Elytron": true, "Itzal": true,
-	// Bio Lab
-	"Djinn": true,
+	// Sentinels have no credits price, so the check below never sees them
+	"Djinn":  true, // Bio Lab
+	"Helios": true, // Energy Lab
 }
 
 // isDojo spots clan dojo research. WFCD doesn't say where a blueprint is
