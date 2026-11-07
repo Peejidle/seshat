@@ -557,7 +557,7 @@ func (m Model) helpView() string {
 		{"f", "cycle filter: all, owned, in progress, collecting, mastered, new"},
 		{"s", "cycle sort: name, type, newest"},
 		{"enter", "details: check off parts with j/k and p (a = all), type a rank"},
-		{"N", "next up: the easiest items left to master, with XP to each rank"},
+		{"N", "next up: the easiest items left to master · tab or 0-7 one group"},
 		{"R", "relic finder · enter a relic · / look up · c count · o yours · r recount"},
 		{"w / i", "open the wiki page / full-size image"},
 		{"T", "theme: follow terminal colours, or Seshat's own"},

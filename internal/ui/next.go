@@ -32,9 +32,15 @@ var routeNames = [...]string{
 	rBuild:   "Every part in hand: ready for the foundry",
 	rMarket:  "Market blueprint for credits, then resources",
 	rDojo:    "Clan dojo research: blueprints for credits, then resources",
-	rRelics:  "Prime with every missing part in a relic you can farm or hold",
+	rRelics:  "Primes whose missing parts are all in relics you can farm or hold",
 	rStarted: "Started: some parts in hand, fewest missing first",
 	rFarm:    "Market blueprint, then parts from missions",
+}
+
+// routeShort names each route in the group picker.
+var routeShort = [...]string{
+	rLevel: "Owned", rBuild: "Build", rMarket: "Market", rDojo: "Dojo",
+	rRelics: "Relics", rStarted: "Started", rFarm: "Farm",
 }
 
 type nextItem struct {
@@ -45,10 +51,25 @@ type nextItem struct {
 	note    string // what's left to do, e.g. "2 of 4 parts"
 }
 
-// nextItems lists what can be mastered, easiest first and the most XP first
+// nextItems is nextAll narrowed to the chosen group, if there is one.
+func (m Model) nextItems() []nextItem {
+	all := m.nextAll()
+	if m.nextGroup == 0 {
+		return all
+	}
+	var out []nextItem
+	for _, n := range all {
+		if n.route == route(m.nextGroup-1) {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// nextAll lists what can be mastered, easiest first and the most XP first
 // within each route. Items needing a higher MR than yours are left out, as
 // are ones with no easy way in (vaulted primes, quests, bosses...).
-func (m Model) nextItems() []nextItem {
+func (m Model) nextAll() []nextItem {
 	rank, _, _ := mastery.Rank(mastery.Estimate(m.items, m.prog))
 	var out []nextItem
 	for i, it := range m.items {
@@ -71,7 +92,7 @@ func (m Model) nextItems() []nextItem {
 		if a.route != b.route {
 			return a.route < b.route
 		}
-		if a.route == rStarted && a.missing != b.missing {
+		if (a.route == rRelics || a.route == rStarted) && a.missing != b.missing {
 			return a.missing < b.missing // one part from done comes first
 		}
 		if a.xp != b.xp {
@@ -182,8 +203,8 @@ func (m Model) nextLines(ns []nextItem) []nextLine {
 }
 
 // nextRows is how many lines the list gets: the window less the box, the
-// heading and the footer.
-func (m Model) nextRows() int { return max(4, m.height-10) }
+// heading, the group picker and the footer.
+func (m Model) nextRows() int { return max(4, m.height-11) }
 
 func (m *Model) openNext() {
 	m.modal, m.nextAt, m.nextTop = mNext, 0, 0
@@ -204,6 +225,13 @@ func (m Model) nextKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.nextAt = 0
 	case "G", "end":
 		m.nextAt = max(len(ns)-1, 0)
+	case "tab", "shift+tab":
+		m.cycleNextGroup(k.String() == "tab")
+		return m, nil
+	case "0", "1", "2", "3", "4", "5", "6", "7":
+		m.nextGroup = int(k.String()[0] - '0')
+		m.nextAt, m.nextTop = 0, 0
+		return m, nil
 	case "enter":
 		if m.nextAt < len(ns) {
 			m.showItem(ns[m.nextAt].idx)
@@ -216,6 +244,51 @@ func (m Model) nextKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	m.scrollNext(ns)
 	return m, nil
+}
+
+// cycleNextGroup moves to the next (or previous) group that has anything
+// in it, by way of "all".
+func (m *Model) cycleNextGroup(forward bool) {
+	has := map[int]bool{0: true}
+	for _, n := range m.nextAll() {
+		has[int(n.route)+1] = true
+	}
+	step := 1
+	if !forward {
+		step = len(routeShort)
+	}
+	for g := (m.nextGroup + step) % (len(routeShort) + 1); ; g = (g + step) % (len(routeShort) + 1) {
+		if has[g] {
+			m.nextGroup = g
+			break
+		}
+	}
+	m.nextAt, m.nextTop = 0, 0
+}
+
+// groupPicker is the row of groups, the chosen one lit, each with its
+// count; empty ones are dimmed.
+func (m Model) groupPicker() string {
+	counts := make([]int, len(routeShort))
+	all := m.nextAll()
+	for _, n := range all {
+		counts[n.route]++
+	}
+	pick := func(g int, label string, n int) string {
+		s := fmt.Sprintf("%d %s %d", g, label, n)
+		switch {
+		case g == m.nextGroup:
+			return sGold.Render("[" + s + "]")
+		case n == 0:
+			return sDim.Render(" " + s + " ")
+		}
+		return sText.Render(" " + s + " ")
+	}
+	parts := []string{pick(0, "All", len(all))}
+	for r, label := range routeShort {
+		parts = append(parts, pick(r+1, label, counts[r]))
+	}
+	return strings.Join(parts, "")
 }
 
 // showItem puts the list cursor on m.items[idx], clearing the search and
@@ -277,11 +350,16 @@ func (m Model) nextView() string {
 		scope = " · " + tabLabels[m.tab] + " only"
 	}
 	b.WriteString(sSub.Render(trunc(fmt.Sprintf("%s · %s XP to %s · these %d items hold %s XP%s",
-		mastery.Label(rank), commas(next-xp), mastery.Label(rank+1), len(ns), commas(total), scope), w)) + "\n\n")
+		mastery.Label(rank), commas(next-xp), mastery.Label(rank+1), len(ns), commas(total), scope), w)) + "\n")
+	b.WriteString(trunc(m.groupPicker(), w) + "\n\n")
 
 	lines := m.nextLines(ns)
 	if len(ns) == 0 {
-		b.WriteString(sDim.Render("Nothing easy left here: what remains is vaulted, from quests or bosses.") + "\n")
+		msg := "Nothing easy left here: what remains is vaulted, from quests or bosses."
+		if m.nextGroup > 0 {
+			msg = "Nothing in this group: tab to another, or 0 for all."
+		}
+		b.WriteString(sDim.Render(msg) + "\n")
 	}
 	shown := 0
 	running := xp // your XP once everything up to this line is mastered
@@ -294,7 +372,7 @@ func (m Model) nextView() string {
 		}
 		shown++
 		if l.item < 0 {
-			b.WriteString(l.text + "\n")
+			b.WriteString(trunc(l.text, w) + "\n")
 			continue
 		}
 		n := ns[l.item]
@@ -313,6 +391,6 @@ func (m Model) nextView() string {
 	b.WriteString(strings.Repeat("\n", max(m.nextRows()-shown, 0)))
 
 	b.WriteString("\n" + sDim.Render(trunc("XP it gives · XP left to the next rank once it's mastered · follows the category tab", w)) + "\n")
-	b.WriteString(sDim.Render(trunc("j/k move · pgup/pgdn · enter details · esc close", w)))
+	b.WriteString(sDim.Render(trunc("j/k move · tab or 0-7 group · enter details · esc close", w)))
 	return b.String()
 }

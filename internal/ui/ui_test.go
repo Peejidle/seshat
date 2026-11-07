@@ -356,6 +356,20 @@ func TestNextUp(t *testing.T) {
 	if m.modal != mNext || len(m.nextItems()) != 2 {
 		t.Errorf("back in next up with Atlas gone: modal %v, %d items", m.modal, len(m.nextItems()))
 	}
+
+	// Groups: tab skips the empty ones, a digit picks one outright.
+	m = press(m, "tab")
+	if m.nextGroup != int(rDojo)+1 || len(m.nextItems()) != 1 {
+		t.Errorf("tab: group %d with %d items, want Dojo with Banshee", m.nextGroup, len(m.nextItems()))
+	}
+	mm, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	if m = mm.(Model); m.nextGroup != 0 {
+		t.Errorf("shift+tab from the first group should go back to all, got %d", m.nextGroup)
+	}
+	m = press(m, "7")
+	if len(m.nextItems()) != 1 || m.items[m.nextItems()[0].idx].Name != "Ash" || m.modal != mNext {
+		t.Errorf("7 should show only the farm group, Ash")
+	}
 }
 
 func TestNextUpHeldRelicsAndStarted(t *testing.T) {

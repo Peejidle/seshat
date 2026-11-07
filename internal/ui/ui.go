@@ -106,6 +106,9 @@ type Model struct {
 	detailBack modal
 
 	nextAt, nextTop int // selected item and first shown line in "next up"
+	// nextGroup narrows "next up" to one route, 1 + the route, or 0 for
+	// all of them. Kept between visits, e.g. on Relics while running them.
+	nextGroup int
 
 	relicAt, relicTop int  // selected and first shown relic in the finder
 	relicVaulted      bool // the finder includes vaulted relics

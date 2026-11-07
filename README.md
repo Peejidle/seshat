@@ -151,7 +151,7 @@ first, with the most XP first within each group:
 4. **Clan dojo research**: blueprints and parts for credits, then
    resources.
 5. **Prime with every missing part in a relic you can farm or already
-   hold** (counted in the relic finder).
+   hold** (counted in the relic finder), fewest parts missing first.
 6. **Started: some parts in hand**, whatever the item, with the ones
    missing fewest parts first.
 7. **Market blueprint, then parts from missions**, e.g. Warframes whose
@@ -161,7 +161,11 @@ Each row shows the XP it gives and how much you'd still need for the next
 rank once it's mastered, and a line marks where each rank would be reached
 if you worked down the list. Credit and platinum prices are shown where
 WFCD has them. It follows the category tab (`2` then `N` for Warframes
-only), and `enter` opens an item's details and comes back. Items needing a
+only), and `enter` opens an item's details and comes back. `tab` steps
+through the groups one at a time, skipping empty ones, and `1`–`7` jump
+straight to one (`0` for all). The choice is kept, so while running
+relics, `N` opens straight on the primes worth cracking them for, and
+`enter` on one shows which of your relics hold its parts. Items needing a
 higher MR than yours, and ones with no easy way in (vaulted primes, quests,
 Kuva Liches and so on), are left out.
 
