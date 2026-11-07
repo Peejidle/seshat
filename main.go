@@ -5,6 +5,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -27,7 +28,9 @@ usage:
   seshat export FILE     back up your records
   seshat import FILE     restore records from a backup
   seshat import-profile FILE
-                         mark mastery from your saved Warframe profile
+                         mark mastery from your saved Warframe profile;
+                         FILE - reads it from standard input, e.g.
+                         wl-paste | seshat import-profile -
                          (see README: "Importing from your profile")
 `
 
@@ -96,7 +99,17 @@ func loadItems(paths ui.Paths) ([]catalog.Item, error) {
 }
 
 func importProfile(paths ui.Paths, prog *store.Progress, file string) error {
-	p, err := profile.Load(file)
+	var b []byte
+	var err error
+	if file == "-" {
+		b, err = io.ReadAll(os.Stdin) // "-" is the usual way to say "read the pipe"
+	} else {
+		b, err = os.ReadFile(file)
+	}
+	if err != nil {
+		return err
+	}
+	p, err := profile.Parse(b)
 	if err != nil {
 		return err
 	}
@@ -104,11 +117,16 @@ func importProfile(paths ui.Paths, prog *store.Progress, file string) error {
 	if err != nil {
 		return err
 	}
-	r := profile.Apply(p, items, prog)
+	// Without a synced star chart the ledger's node XP is left as it was;
+	// the summary says so.
+	nodes, _ := profile.LoadNodeXP(filepath.Join(paths.Data, catalog.NodesFile))
+	r := profile.Apply(p, items, prog, nodes)
 	if err := prog.Save(paths.Progress); err != nil {
 		return err
 	}
-	fmt.Println(profile.Summary(r))
+	for _, l := range profile.Summary(r) {
+		fmt.Println(l)
+	}
 	return nil
 }
 

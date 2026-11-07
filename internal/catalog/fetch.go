@@ -15,10 +15,19 @@ const (
 	imageURL = "https://raw.githubusercontent.com/WFCD/warframe-items/master/data/img/"
 	// WFCD's mirror of DE's published drop tables, for relic contents.
 	dropsURL = "https://drops.warframestat.us/data/all.json"
+	// The wiki's star chart: the only public list of how much mastery each
+	// node gives, keyed by the node names a Warframe profile uses.
+	nodesURL = "https://wiki.warframe.com/w/Module:Missions/data?action=raw"
 )
 
 // DropsFile is the cached drop tables, read by package relics.
 const DropsFile = "drops.json"
+
+// NodesFile is the cached wiki star chart, read by package profile.
+const NodesFile = "nodes.lua"
+
+// userAgent says who is asking, as the wiki asks of tools.
+const userAgent = "Seshat (https://github.com/Peejidle/seshat)"
 
 type source struct{ file, url string }
 
@@ -28,13 +37,16 @@ func sources() []source {
 	for _, f := range SourceFiles {
 		s = append(s, source{f + ".json", dataURL + f + ".json"})
 	}
-	return append(s, source{DropsFile, dropsURL})
+	return append(s, source{DropsFile, dropsURL}, source{NodesFile, nodesURL})
 }
 
 var client = &http.Client{Timeout: 60 * time.Second}
 
 type meta struct {
-	ETags     map[string]string `json:"etags"`
+	ETags map[string]string `json:"etags"`
+	// Modified holds Last-Modified dates, for servers that send no ETag
+	// (the wiki).
+	Modified  map[string]string `json:"modified,omitempty"`
 	CheckedAt time.Time         `json:"checkedAt"`
 }
 
@@ -45,6 +57,9 @@ func readMeta(dir string) meta {
 	}
 	if m.ETags == nil {
 		m.ETags = map[string]string{}
+	}
+	if m.Modified == nil {
+		m.Modified = map[string]string{}
 	}
 	return m
 }
@@ -73,9 +88,13 @@ func Refresh(dir string) (int, error) {
 	for _, s := range sources() {
 		path := filepath.Join(dir, s.file)
 		req, _ := http.NewRequest("GET", s.url, nil)
-		if et := m.ETags[s.file]; et != "" {
-			if _, err := os.Stat(path); err == nil {
+		req.Header.Set("User-Agent", userAgent)
+		if _, err := os.Stat(path); err == nil {
+			if et := m.ETags[s.file]; et != "" {
 				req.Header.Set("If-None-Match", et)
+			}
+			if lm := m.Modified[s.file]; lm != "" {
+				req.Header.Set("If-Modified-Since", lm)
 			}
 		}
 		resp, err := client.Do(req)
@@ -96,6 +115,7 @@ func Refresh(dir string) (int, error) {
 			return changed, err
 		}
 		m.ETags[s.file] = resp.Header.Get("ETag")
+		m.Modified[s.file] = resp.Header.Get("Last-Modified")
 		changed++
 	}
 	m.CheckedAt = time.Now()

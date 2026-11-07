@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Peejidle/seshat/internal/catalog"
+	"github.com/Peejidle/seshat/internal/profile"
 	"github.com/Peejidle/seshat/internal/relics"
 	"github.com/Peejidle/seshat/internal/store"
 	"github.com/Peejidle/seshat/internal/termimg"
@@ -66,6 +67,7 @@ const (
 	mDetail
 	mRelics
 	mNext
+	mProfile
 )
 
 // tab 0 is "All"; tab i>0 is catalog.Categories[i-1].
@@ -78,6 +80,7 @@ type Model struct {
 	items   []catalog.Item
 	relics  *relics.Table            // nil until the drop tables are cached
 	drops   map[string][]relics.Drop // partKey -> relics that drop it, best first
+	nodeXP  map[string]int           // star chart node -> mastery XP, from the wiki
 	newIDs  map[string]bool
 	visible []int // indexes into items
 	loading string
@@ -96,8 +99,14 @@ type Model struct {
 	ledger   []textinput.Model
 	ledgerAt int
 	pathIn   textinput.Model
-	fromProf bool // the import modal reads a Warframe profile, not a backup
-	partAt   int  // selected part in the details view
+	// The profile import: which step it's at, when it last opened the
+	// profile in the browser, its ID box and what it last reported.
+	profStep   profStep
+	profOpened time.Time
+	profID     textinput.Model
+	profLines  []string
+	profErr    string
+	partAt     int // selected part in the details view
 	// rankDigits is a rank being typed in the details view, for items
 	// levelled part way, such as a Kuva weapon at 34 of 40.
 	rankDigits string
@@ -144,7 +153,8 @@ type Model struct {
 type (
 	catalogMsg struct {
 		items  []catalog.Item
-		relics *relics.Table // nil if the drop tables couldn't be read
+		relics *relics.Table  // nil if the drop tables couldn't be read
+		nodes  map[string]int // XP per star chart node; nil if not cached
 		err    error
 	}
 	refreshMsg struct {
@@ -183,8 +193,13 @@ func New(paths Paths, prog *store.Progress) Model {
 	c.Placeholder = "a s8 12, l n1 4, m s3 +2"
 	c.CharLimit = 256
 
+	id := textinput.New()
+	id.Prompt = "id › "
+	id.Placeholder = "24 letters and digits, or the whole profile URL"
+	id.CharLimit = 256
+
 	m := Model{
-		paths: paths, prog: prog, search: s, pathIn: p, relicQuery: r, relicCount: c,
+		paths: paths, prog: prog, search: s, pathIn: p, relicQuery: r, relicCount: c, profID: id,
 		newIDs: map[string]bool{}, anchor: -1, imgMode: termimg.Detect(),
 		images: map[string]string{}, imgErr: map[string]bool{},
 	}
@@ -208,7 +223,8 @@ func loadCatalog(dir string) tea.Cmd {
 		items, err := catalog.Load(dir)
 		// Relic data is optional: everything else works without it.
 		table, _ := relics.Load(filepath.Join(dir, catalog.DropsFile))
-		return catalogMsg{items, table, err}
+		nodes, _ := profile.LoadNodeXP(filepath.Join(dir, catalog.NodesFile))
+		return catalogMsg{items, table, nodes, err}
 	}
 }
 
@@ -248,7 +264,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.fail("archive unreadable: %v (press u to re-sync)", msg.err)
 			return m, nil
 		}
-		m.items, m.relics = msg.items, msg.relics
+		m.items, m.relics, m.nodeXP = msg.items, msg.relics, msg.nodes
 		m.matchDrops()
 		m.markNew()
 		m.rebuild()
@@ -286,6 +302,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.imgErr[msg.name] = true
 		} else {
 			m.images[key] = msg.out
+		}
+		return m, nil
+
+	case clipboardMsg:
+		switch {
+		case m.modal != mProfile:
+			// closed while the clipboard was read: drop it
+		case msg.err != nil:
+			m.profErr = msg.err.Error()
+		default:
+			m.importProfileData(msg.data)
 		}
 		return m, nil
 
@@ -367,6 +394,8 @@ func (m Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.ledgerKey(k)
 	case mImport:
 		return m.importKey(k)
+	case mProfile:
+		return m.profileKey(k)
 	case mRelics:
 		return m.relicKey(k)
 	case mNext:
@@ -533,14 +562,12 @@ func (m Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m.say("Records copied to %s", path)
 		}
-	case "I", "P":
-		m.modal, m.fromProf = mImport, k.String() == "P"
+	case "I":
+		m.modal = mImport
 		m.pathIn.SetValue("")
-		if m.fromProf {
-			m.pathIn.SetValue(guessProfilePath())
-			m.pathIn.CursorEnd()
-		}
 		return m, m.pathIn.Focus()
+	case "P":
+		return m, m.openProfileImport()
 	case "?":
 		m.modal = mHelp
 	}

@@ -5,12 +5,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-
-	"github.com/Peejidle/seshat/internal/profile"
 )
 
 // The ledger and the import prompts.
@@ -104,17 +101,8 @@ func (m Model) importKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.modal = mNone
 		return m, nil
 	case "enter":
-		path := strings.TrimSpace(m.pathIn.Value())
-		if strings.HasPrefix(path, "~/") {
-			home, _ := os.UserHomeDir()
-			path = filepath.Join(home, path[2:])
-		}
-		if m.fromProf {
-			if err := m.importProfile(path); err != nil {
-				m.fail("profile import failed: %v", err)
-				return m, nil // keep the prompt open to fix the path
-			}
-		} else if err := m.prog.Import(path); err != nil {
+		path := expandHome(strings.TrimSpace(m.pathIn.Value()))
+		if err := m.prog.Import(path); err != nil {
 			m.fail("import failed: %v", err)
 		} else {
 			m.save()
@@ -129,36 +117,12 @@ func (m Model) importKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m *Model) importProfile(path string) error {
-	p, err := profile.Load(path)
-	if err != nil {
-		return err
+// expandHome turns a leading ~/ into the home folder, as a shell would:
+// Go's file functions take paths literally.
+func expandHome(path string) string {
+	if strings.HasPrefix(path, "~/") {
+		home, _ := os.UserHomeDir()
+		return filepath.Join(home, path[2:])
 	}
-	r := profile.Apply(p, m.items, m.prog)
-	m.save()
-	m.say("%s", profile.Summary(r))
-	m.rebuildKeep()
-	return nil
-}
-
-// guessProfilePath suggests the newest profile the browser saved to
-// ~/Downloads, since browsers name it after the endpoint.
-func guessProfilePath() string {
-	home, _ := os.UserHomeDir()
-	dir := filepath.Join(home, "Downloads")
-	entries, _ := os.ReadDir(dir)
-	var best string
-	var newest time.Time
-	for _, e := range entries {
-		if !strings.HasPrefix(strings.ToLower(e.Name()), "getprofileviewingdata") {
-			continue
-		}
-		if info, err := e.Info(); err == nil && info.ModTime().After(newest) {
-			best, newest = e.Name(), info.ModTime()
-		}
-	}
-	if best == "" {
-		return "~/Downloads/"
-	}
-	return "~/Downloads/" + best
+	return path
 }

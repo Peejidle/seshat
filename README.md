@@ -56,7 +56,7 @@ In the TUI press `?` for every key. The main ones:
 | `R` | relic finder: relics holding parts you need; there `enter` opens one, `/` looks up any part or relic, `c` counts your relics, `o` lists them |
 | `x` | ledger: star chart & steel path XP, intrinsic ranks, for the MR estimate |
 | `u` | sync item data now |
-| `P` | import mastery from your saved Warframe profile |
+| `P` | import from your Warframe profile: mastery, intrinsics, Star Chart and Steel Path |
 
 ## Collecting parts
 
@@ -183,34 +183,50 @@ so you know the weapon is safe to sell.
 
 ## Importing from your profile
 
-Instead of checking off hundreds of items by hand, you can import mastery
-from Warframe's public profile, the same data the in-game profile viewer
-shows. **Seshat never contacts DE's servers.** You fetch the profile once,
-in your own browser, and Seshat reads the saved file. DE rate-limits that
-endpoint hard (bad or repeated requests can block your IP from the game for
-a while) and hasn't sanctioned third-party use, so the one request stays
-yours.
+Instead of checking off hundreds of items by hand, you can import from
+Warframe's public profile, the same data the in-game profile viewer shows.
+**Seshat never contacts DE's servers.** Your browser fetches the profile and
+you copy it across. DE rate-limits that endpoint hard (bad or repeated
+requests can block your IP from the game for a while) and hasn't sanctioned
+third-party use, so the one request stays yours.
 
-1. **Find your account ID.** Log in at warframe.com, press F12 and open
-   Storage (Firefox) or Application (Chrome) → Cookies →
-   `https://www.warframe.com` → `user-info`. Copy the 24-character
-   `user_id`. (The old `warframe.com/api/user-data` page and the `EE.log`
-   method no longer work.)
-2. **Save your profile.** Open this once, with your ID on the end, and save
-   the page (`Ctrl+S`; in Firefox, the *Raw Data* tab → *Save*):
-   `https://api.warframe.com/cdn/getProfileViewingData.php?playerId=<ID>`
-   Consoles use `api-ps4`, `api-xb1`, `api-swi`, `api-mob` or `api-and` in
-   place of `api`.
-3. **Import it:** press `P` in Seshat (it suggests the newest file in
-   `~/Downloads`), or run `seshat import-profile FILE`.
+Press `P`:
 
-Items at max rank are marked mastered. Items below it, such as a Kuva, Tenet
-or Coda weapon at rank 30 of 40 or something you levelled and sold, are
-marked in progress (◐) with their rank, and the XP they've earned counts
-toward your MR estimate. Railjack/Drifter intrinsics are filled into the
-ledger. The import never unmarks anything and leaves *owned*
-alone, since the profile also lists items you've sold. Star Chart and Steel
-Path XP still go in the ledger by hand.
+1. **The first time, give it your account ID.** Log in at warframe.com,
+   press F12 and open Storage (Firefox) or Application (Chrome) → Cookies →
+   `https://www.warframe.com` → `user-info`, and copy the 24-character
+   `user_id`. Pasting the whole profile URL works too. Seshat remembers it.
+2. **Seshat opens your profile in the browser.** In Firefox, open the *Raw
+   Data* tab and press *Copy*; elsewhere, select all and copy.
+3. **Back in Seshat, press `enter`.** It reads the clipboard (through
+   `wl-paste`, `xclip` or `xsel`; or paste with `ctrl+shift+v`) and shows
+   what it imported.
+
+After the first time, an update is `P`, *Copy*, `enter`. To import a saved
+file instead, press `f` at step 2, or run `seshat import-profile FILE`
+(`-` reads standard input: `wl-paste | seshat import-profile -`). The
+address is `https://api.warframe.com/cdn/getProfileViewingData.php?playerId=<ID>`;
+consoles use `api-ps4`, `api-xb1`, `api-swi`, `api-mob` or `api-and` in place
+of `api`, which only the file route supports for now.
+
+What it fills in:
+
+- **Items:** those at max rank are marked mastered. Those below it, such as
+  a Kuva, Tenet or Coda weapon at rank 30 of 40 or something you levelled
+  and sold, are marked in progress (◐) with their rank, and the XP they've
+  earned counts toward your MR estimate. It never unmarks anything and
+  leaves *owned* alone, since the profile also lists items you've sold.
+- **Intrinsics:** Railjack and Drifter, into the ledger.
+- **Star Chart and Steel Path:** worked out from the nodes you've cleared,
+  using the XP per node from the
+  [Warframe wiki](https://wiki.warframe.com/w/Module:Missions/data)
+  (CC BY-SA), which Seshat syncs with the rest of the archive. DE doesn't
+  publish these figures.
+- **A check:** it compares Seshat's estimate with the Mastery Rank the game
+  shows, and says if they differ.
+
+What it can't: relic counts, parts held and what you own right now are
+only in your full inventory, which the public profile doesn't include.
 
 ## How new items show up
 
@@ -224,11 +240,13 @@ Items that weren't there before are marked `✦` until you quit, and the
 Item XP is max rank × 100 for weapons and amps, or × 200 for Warframes,
 companions, Archwings, Necramechs, K-Drives and the Plexus. Kuva, Tenet and
 Coda weapons and Necramechs rank to 40: to count one part way, open its
-details and type the rank it has reached, e.g. `34` then `enter`. Star chart
-and Steel Path XP can't be enumerated, so enter them in the ledger (`x`)
-from your in-game profile: the XP itself, not how many nodes are done. Intrinsics are entered as ranks: add up every school's rank (each
-0–10), so Railjack is out of 50 and Drifter out of 40. Each rank is worth
-1,500 mastery XP.
+details and type the rank it has reached, e.g. `34` then `enter`.
+
+Star Chart and Steel Path XP, and intrinsics, aren't items, so they live in
+the ledger (`x`). A profile import (`P`) fills them all in. By hand, Star
+Chart and Steel Path take the XP itself, not how many nodes are done, and
+intrinsics take ranks: add up every school's rank (each 0–10), so Railjack
+is out of 50 and Drifter out of 40. Each rank is worth 1,500 mastery XP.
 
 WFCD's `masterable` flag is unreliable for modular gear, so Seshat applies
 its own rules: amp prisms, kitgun chambers and K-Drive decks count; other

@@ -1,6 +1,7 @@
 package profile
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Peejidle/seshat/internal/catalog"
@@ -16,8 +17,24 @@ const sample = `{"Results":[{
 		{"ItemType":"/kuva/rank30","XP":450000},
 		{"ItemType":"/not/in/catalog","XP":5}
 	]},
-	"PlayerSkills":{"LPS_PILOTING":10,"LPS_GUNNERY":5,"LPS_DRIFT_RIDING":3}
+	"PlayerSkills":{"LPS_PILOTING":10,"LPS_GUNNERY":5,"LPS_DRIFT_RIDING":3},
+	"PlayerLevel":4,
+	"Missions":[
+		{"Tag":"SolNode108","Completes":3,"Tier":1},
+		{"Tag":"SolNode2","Completes":1},
+		{"Tag":"MercuryJunction","Completes":1,"Tier":1},
+		{"Tag":"EventNode5","Completes":2}
+	]
 }]}`
+
+// A few lines of the wiki's star chart, as it's written.
+const wikiNodes = `
+		{ Name = "Tolstoj", Planet = "Mercury", Drops = {"Cronus","Seer"}, MasteryExp = 25, InternalName = "SolNode108", PreviousNodes = { "Suisei" } },
+		{ Name = "Aphrodite", Planet = "Venus", MasteryExp = 18, InternalName = "SolNode2" },
+		{ Name = "Larunda Relay", Planet = "Mercury", MasteryExp = 0, InternalName = "MercuryHUB" },
+		{ Name = "Lunaro Arena", MasteryExp = 0, InternalName = "" },
+		{ Name = "Mercury Junction", InternalName = "MercuryJunction", MasteryExp = 1000 },
+`
 
 func TestApply(t *testing.T) {
 	p, err := Parse([]byte(sample))
@@ -37,7 +54,7 @@ func TestApply(t *testing.T) {
 	prog := store.New()
 	prog.Set("/kuva/maxed", store.Mark{Mastered: true, Owned: true})
 
-	r := Apply(p, items, prog)
+	r := Apply(p, items, prog, ParseNodeXP([]byte(wikiNodes)))
 	if r.NewlyMastered != 1 || r.AlreadyMastered != 1 || r.Partial != 2 {
 		t.Errorf("result = %+v, want 1 new, 1 already, 2 partial", r)
 	}
@@ -55,6 +72,29 @@ func TestApply(t *testing.T) {
 	}
 	if prog.Extra.Railjack != 15*1500 || prog.Extra.Drifter != 3*1500 {
 		t.Errorf("intrinsics = %d / %d", prog.Extra.Railjack, prog.Extra.Drifter)
+	}
+	// Star Chart: Tolstoj 25 + Aphrodite 18 + the junction 1,000; the event
+	// node isn't in the wiki's chart and gives nothing. Steel Path: the two
+	// cleared at Tier 1.
+	if prog.Extra.StarChart != 1043 || prog.Extra.SteelPath != 1025 {
+		t.Errorf("star chart %d, steel path %d, want 1043 and 1025", prog.Extra.StarChart, prog.Extra.SteelPath)
+	}
+	// 14,500 item XP + 27,000 intrinsics + 2,068 nodes = 43,568: MR 4.
+	if r.MR != 4 || r.Estimate != 4 || !strings.Contains(strings.Join(Summary(r), " "), "matches the game") {
+		t.Errorf("MR %d, estimate %d, summary %q", r.MR, r.Estimate, Summary(r))
+	}
+}
+
+func TestApplyWithoutNodes(t *testing.T) {
+	p, _ := Parse([]byte(sample))
+	prog := store.New()
+	prog.Extra.StarChart = 500 // typed in by hand: kept when there's no chart
+	r := Apply(p, nil, prog, nil)
+	if prog.Extra.StarChart != 500 || r.Nodes {
+		t.Errorf("star chart %d, nodes %v: should be left alone", prog.Extra.StarChart, r.Nodes)
+	}
+	if !strings.Contains(strings.Join(Summary(r), " "), "isn't marked right") {
+		t.Errorf("an MR mismatch should be reported: %q", Summary(r))
 	}
 }
 

@@ -35,7 +35,9 @@ func (e ExtraXP) Total() int {
 type Settings struct {
 	HideMastered bool   `json:"hideMastered"`
 	Theme        string `json:"theme,omitempty"` // "" follows the terminal
-
+	// ProfileID is the player's Warframe account ID, remembered so a
+	// profile import only asks for it once.
+	ProfileID string `json:"profileId,omitempty"`
 }
 
 type Progress struct {

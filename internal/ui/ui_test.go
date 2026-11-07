@@ -426,3 +426,52 @@ func TestTypeRank(t *testing.T) {
 		t.Errorf("after typing 45: %+v, want mastered", mk)
 	}
 }
+
+func TestProfileImport(t *testing.T) {
+	m := testModel(t) // frames: 200 XP a rank, so rank 30 takes 900,000 affinity
+	m.nodeXP = map[string]int{"SolNode108": 25, "MercuryJunction": 1000}
+	m = press(m, "P")
+	if m.modal != mProfile || m.profStep != profAskID {
+		t.Fatalf("P with no ID should ask for it: modal %v, step %v", m.modal, m.profStep)
+	}
+	// The whole URL pasted in works as well as the ID.
+	m.profID.SetValue("https://api.warframe.com/cdn/getProfileViewingData.php?playerId=5A1B2C3D4E5F60718293A4B5")
+	mm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if m = mm.(Model); m.prog.Settings.ProfileID != "5a1b2c3d4e5f60718293a4b5" || m.profStep != profCopy {
+		t.Fatalf("ID %q, step %v", m.prog.Settings.ProfileID, m.profStep)
+	}
+
+	// Something else on the clipboard: an error, and still waiting.
+	mm, _ = m.Update(clipboardMsg{data: []byte("hello")})
+	if m = mm.(Model); m.profErr == "" || m.profStep != profCopy {
+		t.Errorf("a non-profile should be refused: err %q, step %v", m.profErr, m.profStep)
+	}
+	profileJSON := `{"Results":[{"DisplayName":"Tenno","PlayerLevel":1,
+		"LoadOutInventory":{"XPInfo":[{"ItemType":"Ash","XP":900000}]},
+		"Missions":[{"Tag":"SolNode108","Completes":1,"Tier":1},{"Tag":"MercuryJunction","Completes":1}]}]}`
+	mm, _ = m.Update(clipboardMsg{data: []byte(profileJSON)})
+	m = mm.(Model)
+	if m.profStep != profDone || !m.prog.Get("Ash").Mastered {
+		t.Fatalf("after reading the clipboard: step %v, Ash %+v, err %q", m.profStep, m.prog.Get("Ash"), m.profErr)
+	}
+	if m.prog.Extra.StarChart != 1025 || m.prog.Extra.SteelPath != 25 {
+		t.Errorf("star chart %d, steel path %d, want 1025 and 25", m.prog.Extra.StarChart, m.prog.Extra.SteelPath)
+	}
+	// 6,000 + 1,050 = 7,050 XP is MR 1, as the profile says.
+	if !strings.Contains(strings.Join(m.profLines, " "), "matches the game") {
+		t.Errorf("report = %q", m.profLines)
+	}
+	if m = press(m, "x"); m.modal != mNone {
+		t.Error("any key should close the report")
+	}
+
+	// Next time the ID is remembered, and a terminal paste works too.
+	m = press(m, "P")
+	if m.profStep != profCopy {
+		t.Fatalf("with an ID saved, P should go straight to copying: step %v", m.profStep)
+	}
+	mm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(profileJSON), Paste: true})
+	if m = mm.(Model); m.profStep != profDone {
+		t.Errorf("a pasted profile should import: step %v, err %q", m.profStep, m.profErr)
+	}
+}
