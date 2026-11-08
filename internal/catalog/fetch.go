@@ -32,8 +32,9 @@ const DropsFile = "drops.json"
 // NodesFile is the cached wiki star chart, read by package profile.
 const NodesFile = "nodes.lua"
 
-// userAgent says who is asking, as the wiki asks of tools.
-const userAgent = "Seshat (https://github.com/Peejidle/seshat)"
+// UserAgent says who is asking, as the wiki and warframe.market ask of
+// tools.
+const UserAgent = "Seshat (https://github.com/Peejidle/seshat)"
 
 type source struct {
 	file, url string
@@ -60,7 +61,7 @@ func sources() []source {
 // changes whenever an item is added or edited.
 func marketVersion() (string, error) {
 	req, _ := http.NewRequest("GET", marketVersionsURL, nil)
-	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("User-Agent", UserAgent)
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
@@ -145,7 +146,7 @@ func Refresh(dir string) (int, error) {
 			}
 		}
 		req, _ := http.NewRequest("GET", s.url, nil)
-		req.Header.Set("User-Agent", userAgent)
+		req.Header.Set("User-Agent", UserAgent)
 		if statErr == nil {
 			if et := m.ETags[s.file]; et != "" {
 				req.Header.Set("If-None-Match", et)

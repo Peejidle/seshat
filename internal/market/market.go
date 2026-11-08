@@ -96,6 +96,24 @@ func (c *Catalog) Arcanes() []Item {
 	return out
 }
 
+// Find looks an item up by name, ignoring case: an exact match if there is
+// one, otherwise every item whose name contains the query.
+func (c *Catalog) Find(query string) []Item {
+	q := strings.ToLower(strings.TrimSpace(query))
+	var out []Item
+	for _, it := range c.items {
+		name := strings.ToLower(it.Name)
+		if name == q {
+			return []Item{it}
+		}
+		if strings.Contains(name, q) {
+			out = append(out, it)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
 // Get finds an item by its game ID.
 func (c *Catalog) Get(gameRef string) (Item, bool) {
 	i, ok := c.byRef[gameRef]

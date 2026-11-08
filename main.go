@@ -8,10 +8,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/Peejidle/seshat/internal/catalog"
+	"github.com/Peejidle/seshat/internal/market"
 	"github.com/Peejidle/seshat/internal/mastery"
 	"github.com/Peejidle/seshat/internal/profile"
 	"github.com/Peejidle/seshat/internal/store"
@@ -32,6 +35,7 @@ usage:
                          FILE - reads it from standard input, e.g.
                          wl-paste | seshat import-profile -
                          (see README: "Importing from your profile")
+  seshat price NAME      look up what an item sells for on warframe.market
 `
 
 func main() {
@@ -73,6 +77,10 @@ func main() {
 		fmt.Printf("records written to %s\n", args[1])
 	case args[0] == "import-profile" && len(args) == 2:
 		if err := importProfile(paths, prog, args[1]); err != nil {
+			die(err)
+		}
+	case args[0] == "price" && len(args) > 1:
+		if err := price(paths, strings.Join(args[1:], " ")); err != nil {
 			die(err)
 		}
 	case args[0] == "import" && len(args) == 2:
@@ -128,6 +136,79 @@ func importProfile(paths ui.Paths, prog *store.Progress, file string) error {
 		fmt.Println(l)
 	}
 	return nil
+}
+
+// price prints what an item goes for, from the cache while it's fresh.
+func price(paths ui.Paths, name string) error {
+	if !catalog.HasCache(paths.Data) {
+		if _, err := catalog.Refresh(paths.Data); err != nil {
+			return err
+		}
+	}
+	mc, err := market.Load(filepath.Join(paths.Data, market.ItemsFile))
+	if err != nil {
+		return err
+	}
+	found := mc.Find(name)
+	switch {
+	case len(found) == 0:
+		return fmt.Errorf("nothing on warframe.market is called %q", name)
+	case len(found) > 1:
+		fmt.Printf("%q could be any of these: say which.\n", name)
+		for i, it := range found {
+			if i == 15 {
+				fmt.Printf("  …and %d more\n", len(found)-i)
+				break
+			}
+			fmt.Println("  " + it.Name)
+		}
+		return nil
+	}
+	it := found[0]
+
+	cache := market.LoadPrices(filepath.Join(paths.Data, market.PricesFile))
+	p, fresh := cache.Get(it.Slug)
+	if !fresh {
+		if p, err = market.NewClient(catalog.UserAgent).Fetch(it); err != nil {
+			return err
+		}
+		cache.Put(p)
+		if err := cache.Save(); err != nil {
+			return err
+		}
+	}
+
+	fmt.Println(it.Name)
+	ranks := []int{0}
+	if it.MaxRank > 0 {
+		ranks = append(ranks, it.MaxRank)
+	}
+	for _, r := range ranks {
+		pr := p.Ranks[r]
+		label := ""
+		if it.MaxRank > 0 {
+			label = fmt.Sprintf("rank %d:  ", r)
+		}
+		fmt.Printf("  %smedian %s (%d sold in 48h) · cheapest seller online %s · best buyer online %s\n",
+			label, platText(pr.Median), pr.Sold, platText(pr.Lowest), platText(pr.TopBuy))
+	}
+	if it.Ducats > 0 {
+		fmt.Printf("  or %d ducats at Baro's kiosks\n", it.Ducats)
+	}
+	checked := "just now"
+	if ago := time.Since(p.Fetched).Round(time.Minute); ago > 0 {
+		checked = strings.TrimSuffix(ago.String(), "0s") + " ago" // "1h5m" rather than "1h5m0s"
+	}
+	fmt.Printf("  checked %s · https://warframe.market/items/%s\n", checked, it.Slug)
+	return nil
+}
+
+// platText shows a price, or a dash where there's none.
+func platText(n int) string {
+	if n == 0 {
+		return "–"
+	}
+	return fmt.Sprintf("%dp", n)
 }
 
 func stats(paths ui.Paths, prog *store.Progress) error {

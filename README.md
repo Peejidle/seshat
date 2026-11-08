@@ -16,6 +16,10 @@ same data that powers warframestat.us), which is regenerated from the
 game's public exports within a day or so of each update. All marks are
 entered by hand.
 
+Prices come from [warframe.market](https://warframe.market), a community
+trading site, read without logging in and no faster than it allows (about
+three requests a second).
+
 ## Install
 
 ```sh
@@ -34,6 +38,7 @@ seshat export FILE     back up your records
 seshat import FILE     restore records from a backup
 seshat import-profile FILE
                        mark mastery from your saved Warframe profile
+seshat price NAME      what an item sells for on warframe.market
 ```
 
 In the TUI press `?` for every key. The main ones:
@@ -252,6 +257,20 @@ WFCD's `masterable` flag is unreliable for modular gear, so Seshat applies
 its own rules: amp prisms, kitgun chambers and K-Drive decks count; other
 parts don't. The Plexus is missing from WFCD and is added by hand in
 `internal/catalog/catalog.go` (`Supplements`).
+
+## Prices
+
+`seshat price arcane energize` shows, for rank 0 and max rank (or the one
+price, for a prime part):
+
+- the **median** paid over the last 48 hours, and how many sold. Only sales
+  people report on the site count, so the real number is higher.
+- the **cheapest seller** and **best buyer** online right now.
+- what Baro gives in **ducats**, for prime parts.
+
+A price is looked up once and trusted for six hours: who's selling changes
+by the hour. The item list syncs with everything else, and is only
+downloaded again when warframe.market says it changed.
 
 ## Files
 
