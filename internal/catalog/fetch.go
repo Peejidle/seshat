@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/Peejidle/seshat/internal/market"
 )
 
 const (
@@ -18,6 +20,10 @@ const (
 	// The wiki's star chart: the only public list of how much mastery each
 	// node gives, keyed by the node names a Warframe profile uses.
 	nodesURL = "https://wiki.warframe.com/w/Module:Missions/data?action=raw"
+	// warframe.market's item list (arcanes, ducats, slugs), and the version
+	// stamps that say when it last changed.
+	marketURL         = "https://api.warframe.market/v2/items"
+	marketVersionsURL = "https://api.warframe.market/v2/versions"
 )
 
 // DropsFile is the cached drop tables, read by package relics.
@@ -29,15 +35,51 @@ const NodesFile = "nodes.lua"
 // userAgent says who is asking, as the wiki asks of tools.
 const userAgent = "Seshat (https://github.com/Peejidle/seshat)"
 
-type source struct{ file, url string }
+type source struct {
+	file, url string
+	// version, if set, asks the server for a short stamp of the file's
+	// version; while it's unchanged the download is skipped. It's for
+	// servers that send no ETag or Last-Modified (warframe.market).
+	version func() (string, error)
+}
 
 // sources lists every file Refresh keeps cached.
 func sources() []source {
 	var s []source
 	for _, f := range SourceFiles {
-		s = append(s, source{f + ".json", dataURL + f + ".json"})
+		s = append(s, source{file: f + ".json", url: dataURL + f + ".json"})
 	}
-	return append(s, source{DropsFile, dropsURL}, source{NodesFile, nodesURL})
+	return append(s,
+		source{file: DropsFile, url: dropsURL},
+		source{file: NodesFile, url: nodesURL},
+		source{file: market.ItemsFile, url: marketURL, version: marketVersion},
+	)
+}
+
+// marketVersion is the stamp warframe.market gives its item list, which
+// changes whenever an item is added or edited.
+func marketVersion() (string, error) {
+	req, _ := http.NewRequest("GET", marketVersionsURL, nil)
+	req.Header.Set("User-Agent", userAgent)
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("market versions: %s", resp.Status)
+	}
+	var v struct {
+		Data struct {
+			Collections struct {
+				Items string `json:"items"`
+			} `json:"collections"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&v); err != nil {
+		return "", err
+	}
+	return v.Data.Collections.Items, nil
 }
 
 var client = &http.Client{Timeout: 60 * time.Second}
@@ -46,7 +88,9 @@ type meta struct {
 	ETags map[string]string `json:"etags"`
 	// Modified holds Last-Modified dates, for servers that send no ETag
 	// (the wiki).
-	Modified  map[string]string `json:"modified,omitempty"`
+	Modified map[string]string `json:"modified,omitempty"`
+	// Versions holds the stamps of sources that have a version check.
+	Versions  map[string]string `json:"versions,omitempty"`
 	CheckedAt time.Time         `json:"checkedAt"`
 }
 
@@ -60,6 +104,9 @@ func readMeta(dir string) meta {
 	}
 	if m.Modified == nil {
 		m.Modified = map[string]string{}
+	}
+	if m.Versions == nil {
+		m.Versions = map[string]string{}
 	}
 	return m
 }
@@ -87,9 +134,19 @@ func Refresh(dir string) (int, error) {
 	changed := 0
 	for _, s := range sources() {
 		path := filepath.Join(dir, s.file)
+		_, statErr := os.Stat(path)
+		var version string
+		if s.version != nil {
+			// If the stamp can't be had, download anyway: the file is
+			// small enough that being sure beats being thrifty.
+			version, _ = s.version()
+			if statErr == nil && version != "" && version == m.Versions[s.file] {
+				continue
+			}
+		}
 		req, _ := http.NewRequest("GET", s.url, nil)
 		req.Header.Set("User-Agent", userAgent)
-		if _, err := os.Stat(path); err == nil {
+		if statErr == nil {
 			if et := m.ETags[s.file]; et != "" {
 				req.Header.Set("If-None-Match", et)
 			}
@@ -116,6 +173,9 @@ func Refresh(dir string) (int, error) {
 		}
 		m.ETags[s.file] = resp.Header.Get("ETag")
 		m.Modified[s.file] = resp.Header.Get("Last-Modified")
+		if version != "" {
+			m.Versions[s.file] = version
+		}
 		changed++
 	}
 	m.CheckedAt = time.Now()

@@ -31,6 +31,14 @@ func (e ExtraXP) Total() int {
 	return e.StarChart + e.SteelPath + e.Railjack + e.Drifter + e.Other
 }
 
+// Arcane counts the copies of one arcane held, for working out what to sell.
+type Arcane struct {
+	Maxed int `json:"maxed,omitempty"`
+	// Copies are the loose ones: rank 0, or a partly ranked arcane counted
+	// as the copies fused into it.
+	Copies int `json:"copies,omitempty"`
+}
+
 // Settings are UI preferences that persist between sessions.
 type Settings struct {
 	HideMastered bool   `json:"hideMastered"`
@@ -56,8 +64,10 @@ type Progress struct {
 	// RelicsCounted is when the relic counts were last checked against the
 	// game, by finishing a recount.
 	RelicsCounted time.Time `json:"relicsCounted,omitzero"`
-	Settings      Settings  `json:"settings"`
-	Updated       time.Time `json:"updated"`
+	// Arcanes counts the arcanes held, by game ID.
+	Arcanes  map[string]Arcane `json:"arcanes,omitempty"`
+	Settings Settings          `json:"settings"`
+	Updated  time.Time         `json:"updated"`
 }
 
 func New() *Progress {
@@ -147,6 +157,21 @@ func (p *Progress) SetRelics(name string, n int) {
 	p.Relics[name] = n
 }
 
+// HeldArcane is how many of an arcane the user holds.
+func (p *Progress) HeldArcane(id string) Arcane { return p.Arcanes[id] }
+
+// SetArcane records the copies of an arcane held.
+func (p *Progress) SetArcane(id string, a Arcane) {
+	if a.Maxed <= 0 && a.Copies <= 0 {
+		delete(p.Arcanes, id)
+		return
+	}
+	if p.Arcanes == nil {
+		p.Arcanes = map[string]Arcane{}
+	}
+	p.Arcanes[id] = Arcane{Maxed: max(0, a.Maxed), Copies: max(0, a.Copies)}
+}
+
 func (p *Progress) Get(id string) Mark { return p.Marks[id] }
 
 func (p *Progress) Set(id string, m Mark) {
@@ -157,8 +182,8 @@ func (p *Progress) Set(id string, m Mark) {
 	p.Marks[id] = m
 }
 
-// Import replaces marks, parts, relics and extra XP from a backup file,
-// keeping Seen.
+// Import replaces marks, parts, relics, arcanes and extra XP from a backup
+// file, keeping Seen.
 func (p *Progress) Import(path string) error {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -170,6 +195,7 @@ func (p *Progress) Import(path string) error {
 	}
 	p.Marks, p.Parts, p.Extra = in.Marks, in.Parts, in.Extra
 	p.Relics, p.RelicsCounted = in.Relics, in.RelicsCounted
+	p.Arcanes = in.Arcanes
 	return nil
 }
 

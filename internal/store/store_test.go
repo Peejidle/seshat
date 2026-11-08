@@ -11,6 +11,7 @@ func TestRoundTrip(t *testing.T) {
 	p.Set("/a", Mark{Owned: true, Rank: 12})
 	p.SetPart("/a", "/a/bp", 1)
 	p.SetRelics("Axi S8", 3)
+	p.SetArcane("/arcane", Arcane{Maxed: 2, Copies: 14})
 	p.Extra.StarChart = 100
 	if err := p.Save(path); err != nil {
 		t.Fatal(err)
@@ -19,7 +20,8 @@ func TestRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if q.Get("/a") != (Mark{Owned: true, Rank: 12}) || q.HeldParts("/a", "/a/bp") != 1 || q.HeldRelics("Axi S8") != 3 || q.Extra.StarChart != 100 {
+	if q.Get("/a") != (Mark{Owned: true, Rank: 12}) || q.HeldParts("/a", "/a/bp") != 1 || q.HeldRelics("Axi S8") != 3 ||
+		q.HeldArcane("/arcane") != (Arcane{Maxed: 2, Copies: 14}) || q.Extra.StarChart != 100 {
 		t.Errorf("reloaded %+v", q)
 	}
 }
@@ -32,8 +34,10 @@ func TestEmptyEntriesAreDropped(t *testing.T) {
 	p.SetPart("/a", "/a/bp", 0)
 	p.SetRelics("Axi S8", 1)
 	p.SetRelics("Axi S8", 0)
-	if len(p.Marks) != 0 || len(p.Parts) != 0 || len(p.Relics) != 0 {
-		t.Errorf("cleared entries linger: %v %v %v", p.Marks, p.Parts, p.Relics)
+	p.SetArcane("/arcane", Arcane{Copies: 3})
+	p.SetArcane("/arcane", Arcane{})
+	if len(p.Marks) != 0 || len(p.Parts) != 0 || len(p.Relics) != 0 || len(p.Arcanes) != 0 {
+		t.Errorf("cleared entries linger: %v %v %v %v", p.Marks, p.Parts, p.Relics, p.Arcanes)
 	}
 }
 
