@@ -65,9 +65,12 @@ type Progress struct {
 	// game, by finishing a recount.
 	RelicsCounted time.Time `json:"relicsCounted,omitzero"`
 	// Arcanes counts the arcanes held, by game ID.
-	Arcanes  map[string]Arcane `json:"arcanes,omitempty"`
-	Settings Settings          `json:"settings"`
-	Updated  time.Time         `json:"updated"`
+	Arcanes map[string]Arcane `json:"arcanes,omitempty"`
+	// Spares counts the prime parts held to sell, by game ID: the extras,
+	// unlike Parts, which counts toward building an item.
+	Spares   map[string]int `json:"spares,omitempty"`
+	Settings Settings       `json:"settings"`
+	Updated  time.Time      `json:"updated"`
 }
 
 func New() *Progress {
@@ -172,6 +175,21 @@ func (p *Progress) SetArcane(id string, a Arcane) {
 	p.Arcanes[id] = Arcane{Maxed: max(0, a.Maxed), Copies: max(0, a.Copies)}
 }
 
+// HeldSpares is how many of a part the user holds to sell.
+func (p *Progress) HeldSpares(id string) int { return p.Spares[id] }
+
+// SetSpares records n of a part held to sell.
+func (p *Progress) SetSpares(id string, n int) {
+	if n <= 0 {
+		delete(p.Spares, id)
+		return
+	}
+	if p.Spares == nil {
+		p.Spares = map[string]int{}
+	}
+	p.Spares[id] = n
+}
+
 func (p *Progress) Get(id string) Mark { return p.Marks[id] }
 
 func (p *Progress) Set(id string, m Mark) {
@@ -182,8 +200,8 @@ func (p *Progress) Set(id string, m Mark) {
 	p.Marks[id] = m
 }
 
-// Import replaces marks, parts, relics, arcanes and extra XP from a backup
-// file, keeping Seen.
+// Import replaces marks, parts, relics, arcanes, spares and extra XP from a
+// backup file, keeping Seen.
 func (p *Progress) Import(path string) error {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -195,7 +213,7 @@ func (p *Progress) Import(path string) error {
 	}
 	p.Marks, p.Parts, p.Extra = in.Marks, in.Parts, in.Extra
 	p.Relics, p.RelicsCounted = in.Relics, in.RelicsCounted
-	p.Arcanes = in.Arcanes
+	p.Arcanes, p.Spares = in.Arcanes, in.Spares
 	return nil
 }
 

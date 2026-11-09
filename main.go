@@ -149,7 +149,7 @@ func price(paths ui.Paths, name string) error {
 	if err != nil {
 		return err
 	}
-	found := mc.Find(name)
+	found := mc.Find(name, nil)
 	switch {
 	case len(found) == 0:
 		return fmt.Errorf("nothing on warframe.market is called %q", name)

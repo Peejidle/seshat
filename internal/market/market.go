@@ -25,9 +25,16 @@ type Item struct {
 	Vaulted bool
 }
 
-func (it Item) IsArcane() bool {
+func (it Item) IsArcane() bool { return it.has("arcane_enhancement") }
+
+// IsPrimePart is a prime part or blueprint, not a whole set.
+func (it Item) IsPrimePart() bool {
+	return it.has("prime") && (it.has("component") || it.has("blueprint")) && !it.has("set")
+}
+
+func (it Item) has(tag string) bool {
 	for _, t := range it.Tags {
-		if t == "arcane_enhancement" {
+		if t == tag {
 			return true
 		}
 	}
@@ -96,17 +103,27 @@ func (c *Catalog) Arcanes() []Item {
 	return out
 }
 
-// Find looks an item up by name, ignoring case: an exact match if there is
-// one, otherwise every item whose name contains the query.
-func (c *Catalog) Find(query string) []Item {
-	q := strings.ToLower(strings.TrimSpace(query))
+// Find looks items up by name, ignoring case: an exact match if there is
+// one, otherwise every item whose name has each word of the query in it,
+// so "nekros neuro" finds Nekros Prime Neuroptics Blueprint. keep, if not
+// nil, narrows the search, e.g. to arcanes.
+func (c *Catalog) Find(query string, keep func(Item) bool) []Item {
+	q := strings.ToLower(strings.Join(strings.Fields(query), " "))
+	words := strings.Fields(q)
 	var out []Item
 	for _, it := range c.items {
+		if keep != nil && !keep(it) {
+			continue
+		}
 		name := strings.ToLower(it.Name)
 		if name == q {
 			return []Item{it}
 		}
-		if strings.Contains(name, q) {
+		all := len(words) > 0
+		for _, w := range words {
+			all = all && strings.Contains(name, w)
+		}
+		if all {
 			out = append(out, it)
 		}
 	}

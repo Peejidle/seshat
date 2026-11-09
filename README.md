@@ -258,6 +258,36 @@ its own rules: amp prisms, kitgun chambers and K-Drive decks count; other
 parts don't. The Plexus is missing from WFCD and is added by hand in
 `internal/catalog/catalog.go` (`Supplements`).
 
+## Selling
+
+Press `S` for what you hold to sell (arcanes and spare prime parts), each
+priced from warframe.market with what to do about it, most platinum first.
+Seshat can't see your inventory, so you tell it what you hold:
+
+1. Press `a` and type part of a name (`energize`, `nekros neuro`). Pick from
+   what it matches with `↑`/`↓` and `enter`.
+2. Fill in how many. An arcane has two boxes, **Maxed** and **Rank 0
+   copies** (`tab` moves between them); a part-ranked one counts as the
+   copies fused into it, e.g. rank 2 = 6. A prime part has just the one.
+3. `enter` saves and goes straight on to the next name; `esc` when you're
+   done.
+
+On the list, `enter` changes the selected item's counts (empty them to
+remove it), `+`/`-` add or take one copy, `r` prices it again, and `w`
+opens it on warframe.market, where you list it yourself.
+
+The advice is rules of thumb, and each one says why:
+
+- **List at** the cheapest seller online's price, kept within 10% of the
+  median paid lately, so one seller dumping or overpricing doesn't set it.
+- **Arcanes:** whether 21 copies (10 for rank 3 arcanes) are worth more fused
+  into a maxed one or sold as singles. It also says if buying the last few
+  copies to fuse one pays off, and when copies are too cheap to bother
+  selling (dissolve them for Vosfor).
+- **Prime parts** at 3p or less go to Baro for ducats instead.
+- A part that an item you haven't built still needs is flagged, unless
+  you've put one aside for it in the item's details.
+
 ## Prices
 
 `seshat price arcane energize` shows, for rank 0 and max rank (or the one

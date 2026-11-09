@@ -149,6 +149,8 @@ func (m Model) View() string {
 		return m.overlayFull(m.relicView())
 	case mNext:
 		return m.overlayFull(m.nextView())
+	case mSell:
+		return m.overlayFull(m.sellView())
 	case mDetail:
 		if it, ok := m.current(); ok {
 			body := m.detail(it, paneWidth+4, 0)
@@ -560,6 +562,7 @@ func (m Model) helpView() string {
 		{"enter", "details: check off parts with j/k and p (a = all), type a rank"},
 		{"N", "next up: the easiest items left to master · tab or 0-7 one group"},
 		{"R", "relic finder · enter a relic · / look up · c count · o yours · r recount"},
+		{"S", "sell: arcanes and spare prime parts, priced from warframe.market"},
 		{"w / i", "open the wiki page / full-size image"},
 		{"T", "theme: follow terminal colours, or Seshat's own"},
 		{"x", "ledger: star chart, steel path & intrinsic XP"},

@@ -42,3 +42,19 @@ func TestCopiesToMax(t *testing.T) {
 		t.Errorf("CopiesToMax(5) = %d, (3) = %d; want 21 and 10", CopiesToMax(5), CopiesToMax(3))
 	}
 }
+
+func TestFind(t *testing.T) {
+	c, _ := Parse([]byte(sample))
+	if f := c.Find("nekros neuro", nil); len(f) != 1 || f[0].Slug != "nekros_prime_neuroptics_blueprint" {
+		t.Errorf("nekros neuro = %+v", f)
+	}
+	if f := c.Find("ARCANE ENERGIZE", nil); len(f) != 1 {
+		t.Errorf("an exact name should find just it: %+v", f)
+	}
+	if f := c.Find("arcane", Item.IsArcane); len(f) != 2 {
+		t.Errorf("arcane = %+v, want both arcanes", f)
+	}
+	if f := c.Find("prime", Item.IsArcane); len(f) != 0 {
+		t.Errorf("keep should narrow the search: %+v", f)
+	}
+}

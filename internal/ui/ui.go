@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Peejidle/seshat/internal/catalog"
+	"github.com/Peejidle/seshat/internal/market"
 	"github.com/Peejidle/seshat/internal/profile"
 	"github.com/Peejidle/seshat/internal/relics"
 	"github.com/Peejidle/seshat/internal/store"
@@ -68,6 +69,7 @@ const (
 	mRelics
 	mNext
 	mProfile
+	mSell
 )
 
 // tab 0 is "All"; tab i>0 is catalog.Categories[i-1].
@@ -134,6 +136,26 @@ type Model struct {
 	relicDigits       string        // a count being typed in the relic window
 	rewardParts       map[string]rewardPart
 
+	// The Sell screen: warframe.market's items and the prices looked up,
+	// which part each prime part is, the selected item (by game ID) and
+	// first shown row, the add form and the lookups still to make.
+	market     *market.Catalog // nil until synced
+	prices     *market.PriceCache
+	mclient    *market.Client
+	partOf     map[string]partRef
+	sellID     string
+	sellTop    int
+	sellStep   sellStage
+	sellIn     textinput.Model    // the name of an item to add
+	sellPick   int                // which of its matches is chosen
+	sellItem   market.Item        // the item whose counts are being filled in
+	sellNum    [2]textinput.Model // its count boxes, fieldMaxed and fieldCopies
+	sellField  int                // the box being typed in
+	sellBack   sellStage          // where esc from the counts goes back to
+	sellMsg    string
+	sellMsgErr bool
+	pricing    []market.Item // queued lookups; the first is under way
+
 	recounting    bool                     // the finder is walking through a recount
 	recountList   []*relics.Relic          // relics to recount, in name order
 	recountAt     int                      // index into recountList
@@ -153,8 +175,9 @@ type Model struct {
 type (
 	catalogMsg struct {
 		items  []catalog.Item
-		relics *relics.Table  // nil if the drop tables couldn't be read
-		nodes  map[string]int // XP per star chart node; nil if not cached
+		relics *relics.Table   // nil if the drop tables couldn't be read
+		nodes  map[string]int  // XP per star chart node; nil if not cached
+		market *market.Catalog // nil if warframe.market's list isn't cached
 		err    error
 	}
 	refreshMsg struct {
@@ -198,10 +221,24 @@ func New(paths Paths, prog *store.Progress) Model {
 	id.Placeholder = "24 letters and digits, or the whole profile URL"
 	id.CharLimit = 256
 
+	sl := textinput.New()
+	sl.Prompt = "⌕ "
+	sl.Placeholder = "e.g. energize, or nekros neuro"
+	sl.CharLimit = 64
+	var nums [2]textinput.Model
+	for i := range nums {
+		nums[i] = textinput.New()
+		nums[i].Prompt = ""
+		nums[i].Placeholder = "0"
+		nums[i].CharLimit = 5
+	}
+
 	m := Model{
-		paths: paths, prog: prog, search: s, pathIn: p, relicQuery: r, relicCount: c, profID: id,
+		paths: paths, prog: prog, search: s, pathIn: p, relicQuery: r, relicCount: c, profID: id, sellIn: sl, sellNum: nums,
 		newIDs: map[string]bool{}, anchor: -1, imgMode: termimg.Detect(),
 		images: map[string]string{}, imgErr: map[string]bool{},
+		prices:  market.LoadPrices(filepath.Join(paths.Data, market.PricesFile)),
+		mclient: market.NewClient(catalog.UserAgent),
 	}
 	applyTheme(themes[themeIndex(prog.Settings.Theme)])
 	return m
@@ -224,7 +261,8 @@ func loadCatalog(dir string) tea.Cmd {
 		// Relic data is optional: everything else works without it.
 		table, _ := relics.Load(filepath.Join(dir, catalog.DropsFile))
 		nodes, _ := profile.LoadNodeXP(filepath.Join(dir, catalog.NodesFile))
-		return catalogMsg{items, table, nodes, err}
+		mc, _ := market.Load(filepath.Join(dir, market.ItemsFile))
+		return catalogMsg{items, table, nodes, mc, err}
 	}
 }
 
@@ -264,8 +302,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.fail("archive unreadable: %v (press u to re-sync)", msg.err)
 			return m, nil
 		}
-		m.items, m.relics, m.nodeXP = msg.items, msg.relics, msg.nodes
+		m.items, m.relics, m.nodeXP, m.market = msg.items, msg.relics, msg.nodes, msg.market
 		m.matchDrops()
+		m.matchMarket()
 		m.markNew()
 		m.rebuild()
 		return m, m.wantImage()
@@ -315,6 +354,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.importProfileData(msg.data)
 		}
 		return m, nil
+
+	case priceMsg:
+		return m.priced(msg)
 
 	case openedMsg:
 		if msg.err != nil {
@@ -400,6 +442,8 @@ func (m Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.relicKey(k)
 	case mNext:
 		return m.nextKey(k)
+	case mSell:
+		return m.sellKey(k)
 	}
 
 	if m.searching {
@@ -554,6 +598,9 @@ func (m Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "R":
 		m.openRelics()
 		return m, nil
+	case "S":
+		cmd := m.openSell()
+		return m, cmd
 	case "E":
 		home, _ := os.UserHomeDir()
 		path := filepath.Join(home, "seshat-backup-"+time.Now().Format("2006-01-02")+".json")
