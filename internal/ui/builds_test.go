@@ -356,3 +356,44 @@ func TestBuildConfigName(t *testing.T) {
 		t.Errorf("esc should cancel: %q", b.Configs[1].Name)
 	}
 }
+
+func TestBuildShardsAndStats(t *testing.T) {
+	m := buildModel(t)
+	limbo := catalog.Item{ID: "/limbo", Name: "Limbo Prime", Category: catalog.CatWarframes, MaxRank: 30,
+		Health: 365, Shield: 270, Armor: 135, Energy: 215, SprintSpeed: 1}
+	mm, _ := m.Update(tea.WindowSizeMsg{Width: 160, Height: 46})
+	mm, _ = mm.Update(catalogMsg{items: []catalog.Item{limbo}, builds: m.bdata})
+	m = mm.(Model)
+	m.openBuild(limbo, mNone)
+
+	// Down to the first shard slot, below the arcanes: three more mod
+	// rows, the arcanes, then the shards.
+	for range 5 {
+		m = press(m, "j")
+	}
+	if m.buildSlot != slotShard {
+		t.Fatalf("five downs should reach the first shard slot, at %d", m.buildSlot)
+	}
+	m = key(typeIn(key(m, tea.KeyEnter), "azure health"), tea.KeyEnter)
+	b, _ := m.prog.Build("/limbo")
+	if b.Shards[0].ID != "azure-health" || b.Shards[0].Installed {
+		t.Fatalf("shard after picking: %+v", b.Shards[0])
+	}
+	v := m.buildsView()
+	if !strings.Contains(v, "Archon Shard (Azure)") || !strings.Contains(v, "465") || !strings.Contains(v, "→ 615") {
+		t.Errorf("an Azure health shard planned:\n%s", v)
+	}
+	// ] makes it Tauforged (+225), f says it's in the game.
+	m = press(m, "]", "f")
+	b, _ = m.prog.Build("/limbo")
+	if !b.Shards[0].Tauforged || !b.Shards[0].Installed {
+		t.Errorf("after ] and f: %+v", b.Shards[0])
+	}
+	if v := m.buildsView(); !strings.Contains(v, "→ 690") || strings.Contains(v, "Needs") {
+		t.Errorf("a Tauforged shard in the game:\n%s", v)
+	}
+	// p on a shard slot just says what works there.
+	if m = press(m, "p"); !strings.Contains(m.buildMsg, "Shard slots") {
+		t.Errorf("p on a shard: %q", m.buildMsg)
+	}
+}

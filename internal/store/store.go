@@ -54,6 +54,9 @@ type Build struct {
 	// Configs are A, B and C; Active is the one last looked at.
 	Configs []BuildConfig `json:"configs"`
 	Active  int           `json:"active,omitempty"`
+	// Shards are a warframe's Archon shards, one per slot, shared by its
+	// configs like the polarities.
+	Shards []BuildShard `json:"shards,omitempty"`
 	// Reactor is an Orokin Reactor (a warframe) or Catalyst (a weapon)
 	// installed in the game, and Exilus the exilus slot unlocked with an
 	// adapter.
@@ -75,6 +78,15 @@ type BuildConfig struct {
 	Mods    []BuildMod `json:"mods"`
 	Arcanes []BuildMod `json:"arcanes"`
 	Notes   string     `json:"notes,omitempty"`
+}
+
+// BuildShard is one Archon shard slot: the bonus planned (package builds
+// lists them by ID; "" for none), whether it's Tauforged, and whether it's
+// in the game yet.
+type BuildShard struct {
+	ID        string `json:"id,omitempty"`
+	Tauforged bool   `json:"tauforged,omitempty"`
+	Installed bool   `json:"installed,omitempty"`
 }
 
 // BuildMod is a mod or arcane, and the rank it's planned at. An empty ID

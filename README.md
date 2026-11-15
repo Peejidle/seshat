@@ -339,6 +339,15 @@ on a weapon). Move with the arrows and:
   ("Steel Path") and writes its notes (what it's for, what to swap in
   later), `D` twice deletes the build.
 
+A warframe also has five **Archon shard** slots under its arcanes, shared
+by its configs: `enter` picks a colour and bonus, `]` makes it Tauforged
+(`[` back), `f` once it's in the game. Beside the slots, where the window
+is wide enough, a **stats panel** shows the frame at rank 30 and what the
+config's mods and the shards make of it: health, shields, armor, energy,
+sprint speed and the four ability stats. Only plain bonuses add up there
+("+440% Health"); mods that do something conditional or more than a stat
+are listed as not counted rather than guessed at.
+
 Capacity follows the game's rules: a mod costs its base drain plus its
 rank, halved (rounding up) in a slot of its polarity, a quarter more in a
 slot of another. An aura or stance adds its capacity instead, doubled by a

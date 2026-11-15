@@ -77,6 +77,11 @@ type Item struct {
 	StancePolarity string
 	ExilusPolarity string
 
+	// A warframe's stats with no mods, as WFCD gives them, for the
+	// Builds screen's stats panel. 0 for everything else.
+	Health, Shield, Armor, Energy int
+	SprintSpeed                   float64
+
 	// Exalted is a weapon a warframe's ability summons, such as Exalted
 	// Blade. These aren't mastered, so they're kept out of the archive's
 	// list (see LoadExalted), but they're modded like any weapon.
@@ -138,6 +143,11 @@ type rawItem struct {
 	MarketCost int      `json:"marketCost"`
 	WikiaURL   string   `json:"wikiaUrl"`
 	Polarities []string `json:"polarities"`
+	Health     int      `json:"health"`
+	Shield     int      `json:"shield"`
+	Armor      int      `json:"armor"`
+	Power      int      `json:"power"`
+	Sprint     float64  `json:"sprintSpeed"`
 	Aura       polarity `json:"aura"`
 	Stance     string   `json:"stancePolarity"`
 	Exilus     string   `json:"exilusPolarity"`
@@ -317,7 +327,8 @@ func classify(file string, r rawItem) (Item, bool) {
 		ImageName: r.ImageName, Description: r.Description,
 		ReleaseDate: r.ReleaseDate, Vaulted: r.Vaulted, Prime: r.IsPrime,
 		WikiURL: r.WikiaURL, CreditBP: r.BPCost, Platinum: r.MarketCost,
-		Dojo:       isDojo(r),
+		Dojo:   isDojo(r),
+		Health: r.Health, Shield: r.Shield, Armor: r.Armor, Energy: r.Power, SprintSpeed: r.Sprint,
 		Polarities: r.Polarities, AuraPolarity: string(r.Aura), StancePolarity: r.Stance, ExilusPolarity: r.Exilus,
 	}
 	if r.Introduced != nil {

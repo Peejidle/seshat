@@ -177,6 +177,9 @@ func New(it catalog.Item) store.Build {
 			Arcanes: make([]store.BuildMod, k.ArcaneSlots()),
 		})
 	}
+	if k == Warframe {
+		b.Shards = make([]store.BuildShard, NumShards)
+	}
 	set := func(i int, p string) { b.Slots[i].Polarity, b.Slots[i].Has = p, p }
 	for i, p := range it.Polarities {
 		if i < NumMods {
@@ -323,6 +326,9 @@ type Plan struct {
 	// Over lists the configs (0 for A) that don't fit even with a Reactor
 	// or Catalyst.
 	Over []int
+	// Shards lists the Archon shards planned but not in the game yet, e.g.
+	// "Crimson", "Tauforged Azure".
+	Shards []string
 }
 
 // Free is the capacity left over in the config being looked at; negative
@@ -332,7 +338,7 @@ func (p Plan) Free() int { return p.Capacity + p.Bonus - p.Used }
 // Done is whether the item has everything its configs need, and they all fit.
 func (p Plan) Done() bool {
 	return !p.NeedReactor && len(p.Forma) == 0 && p.AuraForma == 0 && p.StanceForma == 0 &&
-		p.UmbraForma == 0 && !p.NeedExilus && p.ArcaneLocks == 0 && len(p.Over) == 0
+		p.UmbraForma == 0 && !p.NeedExilus && p.ArcaneLocks == 0 && len(p.Over) == 0 && len(p.Shards) == 0
 }
 
 // Work adds up a build for it: the active config's capacity, and the
@@ -380,6 +386,15 @@ func Work(d *Data, it catalog.Item, b store.Build) Plan {
 	for _, l := range locked {
 		if l {
 			p.ArcaneLocks++
+		}
+	}
+	for _, sh := range b.Shards {
+		if o, ok := ShardByID(sh.ID); ok && !sh.Installed {
+			name := o.Colour
+			if sh.Tauforged {
+				name = "Tauforged " + name
+			}
+			p.Shards = append(p.Shards, name)
 		}
 	}
 	p.Capacity = p.Base
@@ -439,6 +454,12 @@ func (p Plan) Missing(k Kind) []string {
 	}
 	if p.NeedExilus {
 		out = append(out, k.ExilusAdapter())
+	}
+	switch n := len(p.Shards); {
+	case n == 1:
+		out = append(out, "Archon Shard ("+p.Shards[0]+")")
+	case n > 1:
+		out = append(out, fmt.Sprintf("%d Archon Shards (%s)", n, strings.Join(p.Shards, ", ")))
 	}
 	switch {
 	case p.ArcaneLocks == 1:

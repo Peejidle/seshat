@@ -263,3 +263,107 @@ func TestUpgradeOldBuild(t *testing.T) {
 		t.Errorf("B should be empty but shaped like A: %+v", b.Configs[1])
 	}
 }
+
+func TestParseStat(t *testing.T) {
+	for line, want := range map[string]struct {
+		s  Stat
+		v  float64
+		ok bool
+	}{
+		"+440% Health":                  {Health, 4.4, true},
+		"-60% Ability Range":            {Range, -0.6, true},
+		"+27.5% Ability Duration":       {Duration, 0.275, true},
+		"+185% Energy Max":              {Energy, 1.85, true},
+		"+30% Ability Strength on kill": {0, 0, false},
+		"Enemies lose -18% Armor":       {0, 0, false},
+	} {
+		s, v, ok := parseStat(line)
+		if ok != want.ok || (ok && (s != want.s || v < want.v-1e-9 || v > want.v+1e-9)) {
+			t.Errorf("parseStat(%q) = %v, %v, %v", line, s, v, ok)
+		}
+	}
+}
+
+func TestFrameStats(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, catalog.ModsFile), []byte(`[
+		{"uniqueName":"/Vit","name":"Vitality","polarity":"vazarin","baseDrain":2,"fusionLimit":1,"type":"Warframe Mod","compatName":"WARFRAME","levelStats":[{"stats":["+40% Health"]},{"stats":["+440% Health"]}]},
+		{"uniqueName":"/Over","name":"Overextended","polarity":"madurai","baseDrain":6,"fusionLimit":0,"type":"Warframe Mod","compatName":"WARFRAME","levelStats":[{"stats":["+90% Ability Range","-60% Ability Strength"]}]},
+		{"uniqueName":"/Cat","name":"Catalyzing Shields","polarity":"vazarin","baseDrain":2,"fusionLimit":0,"type":"Warframe Mod","compatName":"WARFRAME","levelStats":[{"stats":["x0.20 Max Shield Capacity"]}]},
+		{"uniqueName":"/Aug","name":"Some Augment","polarity":"zenurik","baseDrain":6,"fusionLimit":0,"type":"Warframe Mod","compatName":"Titania","levelStats":[{"stats":["+20% Ability Duration","Lantern explodes on kill"]}]}
+	]`), 0o644)
+	os.WriteFile(filepath.Join(dir, catalog.ArcanesFile), []byte(`[]`), 0o644)
+	d, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Titania Prime as WFCD has her (rank 0); the arsenal shows 465
+	// health, 370 shields, 135 armor and 265 energy at rank 30.
+	titania := catalog.Item{Name: "Titania Prime", Category: catalog.CatWarframes, MaxRank: 30,
+		Health: 365, Shield: 270, Armor: 135, Energy: 215, SprintSpeed: 1}
+	b := New(titania)
+	st := FrameStats(d, titania, b)
+	if st.Base[Health] != 465 || st.Base[Shields] != 370 || st.Base[Armor] != 135 || st.Base[Energy] != 265 || st.Base[Strength] != 1 {
+		t.Errorf("rank 30 base: %v", st.Base)
+	}
+
+	b.Configs[0].Mods[0] = store.BuildMod{ID: "/Vit", Rank: 1}
+	b.Configs[0].Mods[1] = store.BuildMod{ID: "/Over"}
+	b.Configs[0].Mods[2] = store.BuildMod{ID: "/Aug"}
+	b.Configs[0].Mods[3] = store.BuildMod{ID: "/Cat"}
+	b.Shards[0] = store.BuildShard{ID: "crimson-strength", Tauforged: true} // +15%
+	b.Shards[1] = store.BuildShard{ID: "azure-health"}                      // +150
+	b.Shards[2] = store.BuildShard{ID: "amber-casting"}                     // not on the panel
+	st = FrameStats(d, titania, b)
+	near := func(a, b float64) bool { return a > b-1e-6 && a < b+1e-6 }
+	for s, want := range map[Stat]float64{
+		Health:   465*5.4 + 150,
+		Range:    1.9,
+		Strength: 1 - 0.6 + 0.15,
+		Duration: 1.2,
+		Energy:   265,
+		Shields:  370 * 0.2,
+	} {
+		if !near(st.Final[s], want) {
+			t.Errorf("%s = %v, want %v", s.Name(), st.Final[s], want)
+		}
+	}
+	if len(st.Uncounted) != 1 || st.Uncounted[0] != "Some Augment" {
+		t.Errorf("uncounted = %q", st.Uncounted)
+	}
+
+	// Shards not yet in the game are what the item still needs.
+	b.Shards[1].Installed = true
+	got := Work(d, titania, b).Missing(Warframe)
+	if !reflect.DeepEqual(got, []string{"2 Archon Shards (Tauforged Crimson, Amber)"}) {
+		t.Errorf("missing %q", got)
+	}
+}
+
+func TestShardAmount(t *testing.T) {
+	for id, want := range map[string][2]string{
+		"crimson-strength":   {"+10% Ability Strength", "+15% Ability Strength"},
+		"azure-regen":        {"+5 Health/s Regenerated", "+7.5 Health/s Regenerated"},
+		"topaz-blast-health": {"Gain 1 Health per Blast kill, max 300 Health", "Gain 2 Health per Blast kill, max 450 Health"},
+		"violet-melee-crit":  {"+25% Melee Critical Damage, doubled over 500 max Energy", "+37% Melee Critical Damage, doubled over 500 max Energy"},
+		"violet-pickups":     {"Health pickups give +20% Energy, Energy pickups +20% Health", "Health pickups give +30% Energy, Energy pickups +30% Health"},
+	} {
+		o, ok := ShardByID(id)
+		if !ok {
+			t.Fatalf("no shard %q", id)
+		}
+		if got := o.Amount(false); got != want[0] {
+			t.Errorf("%s = %q, want %q", id, got, want[0])
+		}
+		if got := o.Amount(true); got != want[1] {
+			t.Errorf("Tauforged %s = %q, want %q", id, got, want[1])
+		}
+	}
+	colours := map[string]int{}
+	for _, o := range ShardOptions {
+		colours[o.Colour]++
+	}
+	if len(colours) != 6 {
+		t.Errorf("colours: %v", colours)
+	}
+}

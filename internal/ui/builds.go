@@ -2,7 +2,9 @@ package ui
 
 import (
 	"fmt"
+	"math"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -41,7 +43,11 @@ var buildViews = []string{"All", "To do", "Done"}
 
 // Slot numbers in the editor: the mod slots as package builds numbers
 // them, then the arcane slots.
-const slotArcane = builds.NumSlots
+// slotShard is a warframe's first Archon shard slot, after its two arcanes.
+const (
+	slotArcane = builds.NumSlots
+	slotShard  = slotArcane + 2
+)
 
 // buildRow is one build in the list.
 type buildRow struct {
@@ -171,8 +177,15 @@ func (m *Model) openBuild(it catalog.Item, back modal) bool {
 		m.fail("The mod data isn't synced yet: press u.")
 		return false
 	}
-	if _, ok := m.prog.Build(it.ID); !ok {
+	b, ok := m.prog.Build(it.ID)
+	switch {
+	case !ok:
 		m.prog.SetBuild(it.ID, builds.New(it))
+		m.save()
+	case builds.KindOf(it) == builds.Warframe && len(b.Shards) < builds.NumShards:
+		// A warframe's build from before Archon shards were planned.
+		b.Shards = append(b.Shards, make([]store.BuildShard, builds.NumShards-len(b.Shards))...)
+		m.prog.SetBuild(it.ID, b)
 		m.save()
 	}
 	m.modal, m.buildStep, m.buildBack = mBuilds, buildEdit, back
@@ -330,7 +343,17 @@ func buildGrid(k builds.Kind) [][2]int {
 	if k.ArcaneSlots() > 1 {
 		arc[1] = slotArcane + 1
 	}
-	return append(g, arc)
+	g = append(g, arc)
+	if k == builds.Warframe {
+		for i := 0; i < builds.NumShards; i += 2 {
+			pair := [2]int{slotShard + i, -1}
+			if i+1 < builds.NumShards {
+				pair[1] = slotShard + i + 1
+			}
+			g = append(g, pair)
+		}
+	}
+	return g
 }
 
 // moveSlot moves the editor's selection one step through the grid.
@@ -380,6 +403,11 @@ func (m Model) buildEditKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.save()
 	}
 	isMod := m.buildSlot < slotArcane
+	if m.buildSlot >= slotShard {
+		if handled, cmd := m.shardKey(key, &b.Shards[m.buildSlot-slotShard], save); handled {
+			return m, cmd
+		}
+	}
 	switch key {
 	case "up", "k":
 		m.moveSlot(kind, -1, 0)
@@ -393,7 +421,10 @@ func (m Model) buildEditKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.buildStep, m.buildPick = buildPicking, 0
 		m.buildIn.Placeholder = "type to narrow, e.g. serration"
-		if !isMod {
+		switch {
+		case m.buildSlot >= slotShard:
+			m.buildIn.Placeholder = "type to narrow, e.g. crimson, or strength"
+		case !isMod:
 			m.buildIn.Placeholder = "type to narrow, e.g. energize"
 		}
 		m.buildIn.SetValue("")
@@ -559,6 +590,44 @@ func (m Model) buildEditKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// shardKey handles the keys that mean something different on an Archon
+// shard slot: x clears it, ] makes it Tauforged and [ not, f marks it in
+// the game. handled is false for the keys that work as anywhere else.
+func (m *Model) shardKey(key string, sh *store.BuildShard, save func()) (handled bool, cmd tea.Cmd) {
+	m.buildMsgErr = false
+	switch key {
+	case "x", "delete", "backspace":
+		*sh = store.BuildShard{}
+	case "]", "+", "=", "[", "-":
+		if sh.ID == "" {
+			m.buildMsg = "Pick a shard first: enter."
+			return true, nil
+		}
+		sh.Tauforged = key == "]" || key == "+" || key == "="
+		m.buildMsg = "✓ An ordinary shard: ] makes it Tauforged."
+		if sh.Tauforged {
+			m.buildMsg = "✓ Tauforged: half as much again. [ makes it ordinary."
+		}
+	case "f":
+		if sh.ID == "" {
+			m.buildMsg = "Pick a shard first: enter."
+			return true, nil
+		}
+		sh.Installed = !sh.Installed
+		m.buildMsg = "✓ Shard not in the game yet."
+		if sh.Installed {
+			m.buildMsg = "✓ Shard in the game."
+		}
+	case "u", "p", "P", "m", "M":
+		m.buildMsg = "Shard slots: enter picks a shard, ] makes it Tauforged, f once it's in the game."
+		return true, nil
+	default:
+		return false, nil
+	}
+	save()
+	return true, nil
+}
+
 // configName is a config's letter, as the game names them: A, B, C.
 func configName(i int) string { return string(rune('A' + i)) }
 
@@ -653,6 +722,14 @@ type pickRow struct {
 func (m Model) pickRows(it catalog.Item, b store.Build) []pickRow {
 	q := m.buildIn.Value()
 	var rows []pickRow
+	if m.buildSlot >= slotShard {
+		for _, o := range builds.ShardOptions {
+			if words(o.Colour+" "+o.Text, q) {
+				rows = append(rows, pickRow{id: o.ID, name: o.Colour + " · " + o.Amount(false)})
+			}
+		}
+		return rows
+	}
 	if m.buildSlot >= slotArcane {
 		for _, a := range m.bdata.Arcanes {
 			if !builds.ArcaneFits(a, it) || !words(a.Name, q) {
@@ -714,6 +791,16 @@ func (m Model) buildPickKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		r := rows[min(m.buildPick, len(rows)-1)]
+		if m.buildSlot >= slotShard {
+			sh := &b.Shards[m.buildSlot-slotShard]
+			*sh = store.BuildShard{ID: r.id, Tauforged: sh.Tauforged} // a new shard isn't in the game yet
+			m.prog.SetBuild(it.ID, b)
+			m.save()
+			m.buildStep = buildEdit
+			m.buildIn.Blur()
+			m.buildMsg, m.buildMsgErr = "✓ "+r.name+": ] makes it Tauforged, f once it's in the game.", false
+			return m, nil
+		}
 		cfg := b.Config()
 		list, at := cfg.Mods, m.buildSlot
 		if m.buildSlot >= slotArcane {
@@ -800,7 +887,7 @@ func (m Model) buildsView() string {
 	case buildEdit:
 		lines = m.buildEditLines(w)
 		keys = "enter pick · x clear · [ ] rank · m move mod · M move slot · X exalted · n name & notes · D delete · esc back\n" +
-			"p/P plan a polarity · f its Forma's done · r reactor's in · u slot's unlocked (exilus, arcane)"
+			"p/P plan a polarity · f Forma or shard done · r reactor's in · u slot's unlocked (exilus, arcane) · ] Tauforged shard"
 	case buildPicking:
 		lines, keys = m.buildPickLines(w), "type to narrow · ↑/↓ choose · enter put it in · esc back"
 	case buildNoting:
@@ -975,6 +1062,7 @@ func (m Model) buildEditLines(w int) []string {
 	}
 	kind := builds.KindOf(it)
 	lines := m.buildHeader(it, b, w)
+	gridAt := len(lines)
 	cellW := min(42, (w-2)/2)
 	for row, pair := range buildGrid(kind) {
 		if row == 1 || row == len(buildGrid(kind))-1 {
@@ -985,6 +1073,17 @@ func (m Model) buildEditLines(w int) []string {
 			cells = append(cells, pad(m.slotCell(it, b, s, cellW), cellW))
 		}
 		lines = append(lines, strings.Join(cells, "  "))
+	}
+	// A warframe's stats go beside the slots, where there's room.
+	gridW := 2*cellW + 2
+	if kind == builds.Warframe && w-gridW-4 >= statsPanelW {
+		for i, l := range m.statsPanel(it, b) {
+			at := gridAt + i
+			for at >= len(lines) {
+				lines = append(lines, "")
+			}
+			lines[at] = pad(lines[at], gridW) + "    " + l
+		}
 	}
 	lines = append(lines, "")
 	if m.buildStep == buildNoting {
@@ -1005,7 +1104,59 @@ func (m Model) buildEditLines(w int) []string {
 	lines = append(lines, "")
 	lines = append(lines, m.slotDetail(it, b, w)...)
 	lines = append(lines, "")
-	return append(lines, sDim.Render(trunc("M Madurai · V Vazarin · N Naramon · Z Zenurik · U Umbra · A Any · ◆ Forma to do", w)))
+	return append(lines, sDim.Render(trunc("M Madurai · V Vazarin · N Naramon · Z Zenurik · U Umbra · A Any · ◆ a Forma or shard to do", w)))
+}
+
+// statsPanelW is how wide the stats panel is.
+const statsPanelW = 44
+
+// statsPanel is a warframe's stats at rank 30, and what the active
+// config's mods and the Archon shards make of them.
+func (m Model) statsPanel(it catalog.Item, b store.Build) []string {
+	st := builds.FrameStats(m.bdata, it, b)
+	show := func(s builds.Stat, v float64) string {
+		switch {
+		case s.Ability():
+			return strconv.FormatFloat(math.Round(v*1000)/10, 'f', -1, 64) + "%"
+		case s == builds.Sprint:
+			return strconv.FormatFloat(math.Round(v*100)/100, 'f', -1, 64)
+		}
+		return commas(int(math.Round(v)))
+	}
+	lines := []string{sLapis.Render("Stats") + sDim.Render(" · rank 30, config "+configName(b.Active)+" and shards")}
+	for s := range builds.NumStats {
+		if s == builds.Strength {
+			lines = append(lines, "")
+		}
+		base, final := st.Base[s], st.Final[s]
+		row := sText.Render(pad(s.Name(), 19)) + sDim.Render(pad(show(s, base), 7))
+		switch {
+		case final > base+1e-9:
+			row += sDim.Render("→ ") + sLapis.Render(show(s, final))
+		case final < base-1e-9:
+			row += sDim.Render("→ ") + sErr.Render(show(s, final))
+		}
+		switch {
+		case s == builds.Efficiency && final > 1.75:
+			row += sDim.Render(" (175% max)")
+		case s == builds.Duration && final < 0.125:
+			row += sDim.Render(" (12.5% min)")
+		}
+		lines = append(lines, row)
+	}
+	if len(st.Uncounted) > 0 {
+		note := "Not counted, as conditional or not a stat: " + strings.Join(st.Uncounted, ", ")
+		wrapped := lipgloss.NewStyle().Width(statsPanelW).Render(note)
+		lines = append(lines, "")
+		for i, l := range strings.Split(wrapped, "\n") {
+			if i == 3 {
+				lines[len(lines)-1] = trunc(lines[len(lines)-1]+" …", statsPanelW)
+				break
+			}
+			lines = append(lines, sDim.Render(strings.TrimRight(l, " ")))
+		}
+	}
+	return lines
 }
 
 // slotCell draws one slot: its polarity, the mod, its rank and cost.
@@ -1023,6 +1174,22 @@ func (m Model) slotCell(it catalog.Item, b store.Build, slot, w int) string {
 	nameSt := sText
 	if slot == m.buildSlot {
 		nameSt = sTitle
+	}
+	if slot >= slotShard {
+		sh := b.Shards[slot-slotShard]
+		o, ok := builds.ShardByID(sh.ID)
+		if !ok {
+			return sel + sDim.Render("[◈]  Shard: empty")
+		}
+		text := o.Colour + " " + o.Amount(sh.Tauforged)
+		if sh.Tauforged {
+			text = "Tau " + text
+		}
+		todo := ""
+		if !sh.Installed {
+			todo = sGold.Render(" ◆")
+		}
+		return sel + sDim.Render("[◈]  ") + nameSt.Render(trunc(text, w-8)) + todo
 	}
 	if slot >= slotArcane {
 		a, open := b.Config().Arcanes[slot-slotArcane], b.ArcanesUnlocked[slot-slotArcane]
@@ -1085,6 +1252,29 @@ func kindLabel(k builds.Kind, slot int) string {
 // lines long: what it is and costs, the slot, then what it does, a line
 // for each of its stats, wrapped.
 func (m Model) slotDetail(it catalog.Item, b store.Build, w int) []string {
+	if m.buildSlot >= slotShard {
+		sh := b.Shards[m.buildSlot-slotShard]
+		o, ok := builds.ShardByID(sh.ID)
+		if !ok {
+			return []string{sDim.Render("Empty Archon shard slot: enter to pick a shard.")}
+		}
+		kind := o.Colour + " Archon Shard"
+		if sh.Tauforged {
+			kind = "Tauforged " + kind
+		}
+		state := "not in the game yet (f once it is)"
+		if sh.Installed {
+			state = "in the game"
+		}
+		lines := []string{
+			trunc(sTitle.Render(kind)+sDim.Render(" · "+state), w),
+			sGold.Render("  • ") + sText.Render(o.Amount(sh.Tauforged)),
+		}
+		if !sh.Tauforged {
+			lines = append(lines, sDim.Render("    Tauforged: "+o.Amount(true)))
+		}
+		return lines
+	}
 	if m.buildSlot >= slotArcane {
 		a := b.Config().Arcanes[m.buildSlot-slotArcane]
 		ar, ok := m.bdata.Arcane(a.ID)
@@ -1150,7 +1340,9 @@ func (m Model) buildPickLines(w int) []string {
 		return nil
 	}
 	what := "mod"
-	if m.buildSlot >= slotArcane {
+	if m.buildSlot >= slotShard {
+		what = "Archon shard"
+	} else if m.buildSlot >= slotArcane {
 		what = "arcane"
 	} else if n := builds.KindOf(it).SlotName(m.buildSlot); n != "" {
 		what = strings.ToLower(n) + " mod"
@@ -1169,9 +1361,13 @@ func (m Model) buildPickLines(w int) []string {
 	top := max(0, pick-room+1)
 	for i := top; i < len(rows) && i < top+room; i++ {
 		r := rows[i]
-		sel, name := "  ", sText.Render(pad(trunc(r.name, 34), 36))
+		nameW := 34
+		if m.buildSlot >= slotShard {
+			nameW = w - 4 // shard bonuses are sentences
+		}
+		sel, name := "  ", sText.Render(pad(trunc(r.name, nameW), nameW+2))
 		if i == pick {
-			sel, name = sGold.Render("▸ "), sTitle.Render(pad(trunc(r.name, 34), 36))
+			sel, name = sGold.Render("▸ "), sTitle.Render(pad(trunc(r.name, nameW), nameW+2))
 		}
 		info := ""
 		if m.buildSlot < slotArcane {
