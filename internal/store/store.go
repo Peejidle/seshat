@@ -68,9 +68,10 @@ type BuildSlot struct {
 	Has      string `json:"has,omitempty"`
 }
 
-// BuildConfig is one config: a mod for each slot, an arcane for each
-// arcane slot, and notes on what it's for.
+// BuildConfig is one config: its name, a mod for each slot, an arcane for
+// each arcane slot, and notes on what it's for.
 type BuildConfig struct {
+	Name    string     `json:"name,omitempty"` // e.g. "Steel Path"; "" for just its letter
 	Mods    []BuildMod `json:"mods"`
 	Arcanes []BuildMod `json:"arcanes"`
 	Notes   string     `json:"notes,omitempty"`

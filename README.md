@@ -330,12 +330,13 @@ on a weapon). Move with the arrows and:
   They're modded like weapons, with their own Catalyst, exilus and arcane
   slot, and can also be found by name with `a` in the list.
 - `c` switches between configs A, B and C, as in the game. Each has its
-  own mods, arcanes and notes; the polarities, Reactor or Catalyst and
+  own mods, arcanes, name and notes; the polarities, Reactor or Catalyst and
   unlocked slots are the item's, so all three share them, and the item's
   needs cover every config. `C` copies the config before into this one
   (B from A, C from B), to start a variant.
-- `m` moves a mod to another slot, `x` clears one, `n` writes notes (what
-  the build is for, what to swap in later), `D` twice deletes the build.
+- `m` moves a mod to another slot, `x` clears one, `n` names the config
+  ("Steel Path") and writes its notes (what it's for, what to swap in
+  later), `D` twice deletes the build.
 
 Capacity follows the game's rules: a mod costs its base drain plus its
 rank, halved (rounding up) in a slot of its polarity, a quarter more in a

@@ -175,8 +175,10 @@ type Model struct {
 	buildSwapAll bool            // ...and its polarity with it (M, not m)
 	buildIn      textinput.Model // the name of an item, mod or arcane to pick
 	buildPick    int             // which of its matches is chosen
-	buildNotes   textinput.Model
-	buildSure    string // D or C, pressed once: again deletes the build or copies the config
+	buildName    textinput.Model // the config's name, in the n form
+	buildNotes   textinput.Model // and its notes
+	buildOnName  bool            // the n form's cursor is in the name box
+	buildSure    string          // D or C, pressed once: again deletes the build or copies the config
 	buildMsg     string
 	buildMsgErr  bool
 
@@ -259,9 +261,9 @@ func New(paths Paths, prog *store.Progress) Model {
 		nums[i].CharLimit = 5
 	}
 
-	bf, bn := newBuildInputs()
+	bf, bname, bn := newBuildInputs()
 	m := Model{
-		buildIn: bf, buildNotes: bn, buildSwap: -1,
+		buildIn: bf, buildName: bname, buildNotes: bn, buildSwap: -1,
 		paths: paths, prog: prog, search: s, pathIn: p, relicQuery: r, relicCount: c, profID: id, sellIn: sl, sellNum: nums,
 		newIDs: map[string]bool{}, anchor: -1, imgMode: termimg.Detect(),
 		images: map[string]string{}, imgErr: map[string]bool{},

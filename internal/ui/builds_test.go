@@ -134,7 +134,7 @@ func TestBuildEditor(t *testing.T) {
 	}
 
 	// Notes.
-	m = typeIn(press(m, "n"), "duration build")
+	m = typeIn(key(press(m, "n"), tea.KeyTab), "duration build") // past the name, to the notes
 	m = key(m, tea.KeyEnter)
 	if b, _ = m.prog.Build("/limbo"); b.Config().Notes != "duration build" {
 		t.Errorf("notes = %q", b.Config().Notes)
@@ -335,5 +335,24 @@ func TestBuildConfigs(t *testing.T) {
 	// The tabs show which config is open.
 	if v := m.buildsView(); !strings.Contains(v, "Config") || !strings.Contains(v, "c switch") {
 		t.Errorf("no config tabs:\n%s", v)
+	}
+}
+
+func TestBuildConfigName(t *testing.T) {
+	m := press(buildModel(t), "b", "c") // config B
+	m = typeIn(press(m, "n"), "Steel Path")
+	m = typeIn(key(m, tea.KeyTab), "for the long runs")
+	m = key(m, tea.KeyEnter)
+	b, _ := m.prog.Build("/limbo")
+	if b.Configs[1].Name != "Steel Path" || b.Configs[1].Notes != "for the long runs" || b.Configs[0].Name != "" {
+		t.Errorf("configs after naming B: %+v", b.Configs)
+	}
+	if v := m.buildsView(); !strings.Contains(v, "B · Steel Path") {
+		t.Errorf("the tabs should show B's name:\n%s", v)
+	}
+	// esc leaves it as it was.
+	m = key(typeIn(press(m, "n"), "!!"), tea.KeyEsc)
+	if b, _ = m.prog.Build("/limbo"); b.Configs[1].Name != "Steel Path" {
+		t.Errorf("esc should cancel: %q", b.Configs[1].Name)
 	}
 }

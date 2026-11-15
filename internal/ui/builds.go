@@ -27,7 +27,7 @@ const (
 	buildFind               // choosing an item to plan a build for
 	buildEdit               // the build itself, slot by slot
 	buildPicking            // choosing the mod or arcane for a slot
-	buildNoting             // typing the build's notes
+	buildNoting             // typing the config's name and notes
 )
 
 // The views of the list, as tab steps through them.
@@ -497,14 +497,16 @@ func (m Model) buildEditKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.openBuild(next, m.buildBack)
 		return m, nil
 	case "n":
-		m.buildStep = buildNoting
+		m.buildStep, m.buildOnName = buildNoting, cfg.Name == ""
+		m.buildName.SetValue(cfg.Name)
 		m.buildNotes.SetValue(cfg.Notes)
+		m.buildName.CursorEnd()
 		m.buildNotes.CursorEnd()
-		return m, m.buildNotes.Focus()
+		return m, m.focusNoteBox()
 	case "c":
 		b.Active = (b.Active + 1) % len(b.Configs)
 		save()
-		m.buildMsg, m.buildMsgErr = "Config "+configName(b.Active)+".", false
+		m.buildMsg, m.buildMsgErr = "Config "+configLabel(b.Active, b.Configs[b.Active])+".", false
 		if configEmpty(b.Configs[b.Active]) && b.Active > 0 {
 			m.buildMsg += " It's empty: C copies config " + configName(b.Active-1) + " into it."
 		}
@@ -559,6 +561,15 @@ func (m Model) buildEditKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // configName is a config's letter, as the game names them: A, B, C.
 func configName(i int) string { return string(rune('A' + i)) }
+
+// configLabel is a config's letter and, if it has one, its name:
+// "A", or "B · Steel Path".
+func configLabel(i int, c store.BuildConfig) string {
+	if c.Name == "" {
+		return configName(i)
+	}
+	return configName(i) + " · " + c.Name
+}
 
 // configEmpty is whether a config has no mods or arcanes planned.
 func configEmpty(c store.BuildConfig) bool {
@@ -729,25 +740,49 @@ func (m Model) buildPickKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+// focusNoteBox puts the cursor in the name or notes box, whichever
+// buildOnName says.
+func (m *Model) focusNoteBox() tea.Cmd {
+	m.buildName.Blur()
+	m.buildNotes.Blur()
+	if m.buildOnName {
+		return m.buildName.Focus()
+	}
+	return m.buildNotes.Focus()
+}
+
+// buildNoteKey handles the n form: the config's name and its notes, two
+// boxes saved together.
 func (m Model) buildNoteKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch k.String() {
 	case "esc":
 		m.buildStep = buildEdit
+		m.buildName.Blur()
 		m.buildNotes.Blur()
 		return m, nil
+	case "tab", "shift+tab", "up", "down":
+		m.buildOnName = !m.buildOnName
+		return m, m.focusNoteBox()
 	case "enter":
 		if it, b, ok := m.editing(); ok {
-			b.Configs[b.Active].Notes = strings.TrimSpace(m.buildNotes.Value())
+			cfg := &b.Configs[b.Active]
+			cfg.Name = strings.TrimSpace(m.buildName.Value())
+			cfg.Notes = strings.TrimSpace(m.buildNotes.Value())
 			m.prog.SetBuild(it.ID, b)
 			m.save()
-			m.buildMsg, m.buildMsgErr = "✓ Notes saved.", false
+			m.buildMsg, m.buildMsgErr = "✓ Saved config "+configLabel(b.Active, *cfg)+".", false
 		}
 		m.buildStep = buildEdit
+		m.buildName.Blur()
 		m.buildNotes.Blur()
 		return m, nil
 	}
 	var cmd tea.Cmd
-	m.buildNotes, cmd = m.buildNotes.Update(k)
+	if m.buildOnName {
+		m.buildName, cmd = m.buildName.Update(k)
+	} else {
+		m.buildNotes, cmd = m.buildNotes.Update(k)
+	}
 	return m, cmd
 }
 
@@ -764,12 +799,12 @@ func (m Model) buildsView() string {
 		lines, keys = m.buildFindLines(w), "type part of the name · ↑/↓ choose · enter open · esc back"
 	case buildEdit:
 		lines = m.buildEditLines(w)
-		keys = "enter pick · x clear · [ ] rank · m move mod · M move slot · X exalted · n notes · D delete · esc back\n" +
+		keys = "enter pick · x clear · [ ] rank · m move mod · M move slot · X exalted · n name & notes · D delete · esc back\n" +
 			"p/P plan a polarity · f its Forma's done · r reactor's in · u slot's unlocked (exilus, arcane)"
 	case buildPicking:
 		lines, keys = m.buildPickLines(w), "type to narrow · ↑/↓ choose · enter put it in · esc back"
 	case buildNoting:
-		lines, keys = m.buildEditLines(w), "enter save · esc cancel"
+		lines, keys = m.buildEditLines(w), "tab other box · enter save both · esc cancel"
 	}
 	var b strings.Builder
 	for _, l := range lines {
@@ -920,7 +955,7 @@ func (m Model) buildHeader(it catalog.Item, b store.Build, w int) []string {
 func (m Model) configTabs(b store.Build) string {
 	tabs := sDim.Render("Config ")
 	for i, c := range b.Configs {
-		name := configName(i)
+		name := configLabel(i, c)
 		switch {
 		case i == b.Active:
 			tabs += sTabOn.Render(name)
@@ -930,7 +965,7 @@ func (m Model) configTabs(b store.Build) string {
 			tabs += sText.Padding(0, 1).Render(name)
 		}
 	}
-	return tabs + sDim.Render("  c switch · C copy the one before")
+	return tabs + sDim.Render("  c switch · C copy the one before · n name it")
 }
 
 func (m Model) buildEditLines(w int) []string {
@@ -953,11 +988,19 @@ func (m Model) buildEditLines(w int) []string {
 	}
 	lines = append(lines, "")
 	if m.buildStep == buildNoting {
-		lines = append(lines, sText.Render("Notes: ")+m.buildNotes.View())
+		mark := func(on bool) string {
+			if on {
+				return sGold.Render("▸ ")
+			}
+			return "  "
+		}
+		lines = append(lines,
+			mark(m.buildOnName)+sText.Render("Name:  ")+m.buildName.View(),
+			mark(!m.buildOnName)+sText.Render("Notes: ")+m.buildNotes.View())
 	} else if notes := b.Config().Notes; notes != "" {
 		lines = append(lines, sDim.Render("Notes: ")+sText.Render(trunc(notes, w-7)))
 	} else {
-		lines = append(lines, sDim.Render("Notes: none yet (n): what it's for, what to swap in later"))
+		lines = append(lines, sDim.Render("Notes: none yet (n): what this config's for, what to swap in later"))
 	}
 	lines = append(lines, "")
 	lines = append(lines, m.slotDetail(it, b, w)...)
@@ -1147,13 +1190,17 @@ func (m Model) buildPickLines(w int) []string {
 }
 
 // newBuildInputs makes the Builds screen's text boxes.
-func newBuildInputs() (find, notes textinput.Model) {
+func newBuildInputs() (find, name, notes textinput.Model) {
 	find = textinput.New()
 	find.Prompt = "⌕ "
 	find.CharLimit = 64
+	name = textinput.New()
+	name.Prompt = ""
+	name.Placeholder = "e.g. Steel Path, or Survival"
+	name.CharLimit = 24
 	notes = textinput.New()
 	notes.Prompt = ""
 	notes.Placeholder = "e.g. max duration for Cataclysm; swap in Primed Flow later"
 	notes.CharLimit = 300
-	return find, notes
+	return find, name, notes
 }
