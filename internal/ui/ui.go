@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Peejidle/seshat/internal/builds"
 	"github.com/Peejidle/seshat/internal/catalog"
 	"github.com/Peejidle/seshat/internal/market"
 	"github.com/Peejidle/seshat/internal/profile"
@@ -70,6 +71,7 @@ const (
 	mNext
 	mProfile
 	mSell
+	mBuilds
 )
 
 // tab 0 is "All"; tab i>0 is catalog.Categories[i-1].
@@ -157,6 +159,27 @@ type Model struct {
 	sellMsgErr bool
 	pricing    []market.Item // queued lookups; the first is under way
 
+	// The Builds screen: the mod data, the step it's at, the build in the
+	// list that's selected (by item ID) and the first shown, and in the
+	// editor, the build's item, the selected slot and one being moved.
+	bdata        *builds.Data   // nil until synced
+	exalted      []catalog.Item // the weapons warframes summon, for their builds
+	buildStep    buildStage
+	buildBack    modal // where esc from the editor goes: mDetail, or the list
+	buildView    int   // the list's view: buildsAll, buildsToDo, buildsDone
+	buildListID  string
+	buildTop     int
+	buildID      string
+	buildSlot    int
+	buildSwap    int             // the slot whose mod is being moved, -1 for none
+	buildSwapAll bool            // ...and its polarity with it (M, not m)
+	buildIn      textinput.Model // the name of an item, mod or arcane to pick
+	buildPick    int             // which of its matches is chosen
+	buildNotes   textinput.Model
+	buildSure    string // D or C, pressed once: again deletes the build or copies the config
+	buildMsg     string
+	buildMsgErr  bool
+
 	recounting    bool                     // the finder is walking through a recount
 	recountList   []*relics.Relic          // relics to recount, in name order
 	recountAt     int                      // index into recountList
@@ -175,11 +198,13 @@ type Model struct {
 
 type (
 	catalogMsg struct {
-		items  []catalog.Item
-		relics *relics.Table   // nil if the drop tables couldn't be read
-		nodes  map[string]int  // XP per star chart node; nil if not cached
-		market *market.Catalog // nil if warframe.market's list isn't cached
-		err    error
+		items   []catalog.Item
+		relics  *relics.Table   // nil if the drop tables couldn't be read
+		nodes   map[string]int  // XP per star chart node; nil if not cached
+		market  *market.Catalog // nil if warframe.market's list isn't cached
+		builds  *builds.Data    // nil if the mod data isn't cached
+		exalted []catalog.Item
+		err     error
 	}
 	refreshMsg struct {
 		changed int
@@ -234,7 +259,9 @@ func New(paths Paths, prog *store.Progress) Model {
 		nums[i].CharLimit = 5
 	}
 
+	bf, bn := newBuildInputs()
 	m := Model{
+		buildIn: bf, buildNotes: bn, buildSwap: -1,
 		paths: paths, prog: prog, search: s, pathIn: p, relicQuery: r, relicCount: c, profID: id, sellIn: sl, sellNum: nums,
 		newIDs: map[string]bool{}, anchor: -1, imgMode: termimg.Detect(),
 		images: map[string]string{}, imgErr: map[string]bool{},
@@ -263,7 +290,9 @@ func loadCatalog(dir string) tea.Cmd {
 		table, _ := relics.Load(filepath.Join(dir, catalog.DropsFile))
 		nodes, _ := profile.LoadNodeXP(filepath.Join(dir, catalog.NodesFile))
 		mc, _ := market.Load(filepath.Join(dir, market.ItemsFile))
-		return catalogMsg{items, table, nodes, mc, err}
+		bd, _ := builds.Load(dir)
+		ex, _ := catalog.LoadExalted(dir)
+		return catalogMsg{items, table, nodes, mc, bd, ex, err}
 	}
 }
 
@@ -304,6 +333,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.items, m.relics, m.nodeXP, m.market = msg.items, msg.relics, msg.nodes, msg.market
+		m.bdata, m.exalted = msg.builds, msg.exalted
 		m.matchDrops()
 		m.matchMarket()
 		m.markNew()
@@ -403,6 +433,14 @@ func (m Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch {
 		case key == "o", key == "m", key == " ", key == "w", key == "i":
 			// marking, the wiki link and the image viewer still work here
+		case key == "b":
+			if it, ok := m.current(); ok {
+				m.rankDigits = ""
+				if !m.openBuild(it, mDetail) {
+					m.modal = mDetail // say why on the status line, staying here
+				}
+			}
+			return m, nil
 		case key == "down", key == "j", key == "up", key == "k", key == "p", key == "a":
 			m.partKey(key)
 			return m, nil
@@ -445,6 +483,8 @@ func (m Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.nextKey(k)
 	case mSell:
 		return m.sellKey(k)
+	case mBuilds:
+		return m.buildKey(k)
 	}
 
 	if m.searching {
@@ -602,6 +642,9 @@ func (m Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "S":
 		cmd := m.openSell()
 		return m, cmd
+	case "B":
+		m.openBuilds()
+		return m, nil
 	case "E":
 		home, _ := os.UserHomeDir()
 		path := filepath.Join(home, "seshat-backup-"+time.Now().Format("2006-01-02")+".json")

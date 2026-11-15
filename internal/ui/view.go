@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/Peejidle/seshat/internal/builds"
 	"github.com/Peejidle/seshat/internal/catalog"
 	"github.com/Peejidle/seshat/internal/mastery"
 	"github.com/Peejidle/seshat/internal/termimg"
@@ -151,6 +152,8 @@ func (m Model) View() string {
 		return m.overlayFull(m.nextView())
 	case mSell:
 		return m.overlayFull(m.sellView())
+	case mBuilds:
+		return m.overlayFull(m.buildsView())
 	case mDetail:
 		if it, ok := m.current(); ok {
 			body := m.detail(it, paneWidth+4, 0)
@@ -505,6 +508,18 @@ func (m Model) detail(it catalog.Item, w, imgCols int) string {
 	if it.WikiURL != "" {
 		b.WriteString("\n" + sKey.Render("w") + sDim.Render(" wiki / drops"))
 	}
+	if m.modal == mDetail && builds.KindOf(it) != builds.NoKind {
+		if it.WikiURL != "" {
+			b.WriteString(sDim.Render(" · "))
+		} else {
+			b.WriteString("\n")
+		}
+		label := " plan a build"
+		if _, ok := m.prog.Build(it.ID); ok {
+			label = " its build"
+		}
+		b.WriteString(sKey.Render("b") + sDim.Render(label))
+	}
 	if it.ImageName != "" {
 		b.WriteString(sDim.Render(" · ") + sKey.Render("i") + sDim.Render(" full image"))
 	}
@@ -530,7 +545,7 @@ func (m Model) hints() string {
 	k := func(key, what string) string { return sKey.Render(key) + sDim.Render(" "+what) }
 	return trunc(" "+strings.Join([]string{
 		k("space", "mastered"), k("o", "owned"), k("v", "select"), k("H", "hide mastered"), k("/", "search"), k("f", "filter"),
-		k("s", "sort"), k("⇥", "category"), k("enter", "details"), k("N", "next up"), k("R", "relics"), k("x", "ledger"),
+		k("s", "sort"), k("⇥", "category"), k("enter", "details"), k("N", "next up"), k("R", "relics"), k("B", "builds"), k("x", "ledger"),
 		k("u", "sync"), k("?", "help"), k("q", "quit"),
 	}, sDim.Render(" · ")), m.width)
 }
@@ -563,6 +578,7 @@ func (m Model) helpView() string {
 		{"N", "next up: the easiest items left to master · tab or 0-7 one group"},
 		{"R", "relic finder · enter a relic · / look up · c count · o yours · r recount"},
 		{"S", "sell: arcanes and prime parts you hold, priced from warframe.market"},
+		{"B", "builds: plan mods and arcanes, and what each item still needs (b in details)"},
 		{"w / i", "open the wiki page / full-size image"},
 		{"T", "theme: follow terminal colours, or Seshat's own"},
 		{"x", "ledger: star chart, steel path & intrinsic XP"},

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -67,6 +68,20 @@ type Item struct {
 	Components  []Component
 	UsedIn      []Use // recipes that consume this item, e.g. Bronco -> Akbronco
 
+	// The mod slot polarities it comes with, as WFCD names them
+	// ("madurai"): Polarities for the ordinary slots, in no particular
+	// order, then the aura slot (a warframe), the stance slot (a melee
+	// weapon) and the exilus slot. "" for an unpolarized slot.
+	Polarities     []string
+	AuraPolarity   string
+	StancePolarity string
+	ExilusPolarity string
+
+	// Exalted is a weapon a warframe's ability summons, such as Exalted
+	// Blade. These aren't mastered, so they're kept out of the archive's
+	// list (see LoadExalted), but they're modded like any weapon.
+	Exalted bool
+
 	// How it's bought, where WFCD knows.
 	CreditBP int  // blueprint price in credits, in the Market or the dojo
 	Platinum int  // price of the built item in the Market
@@ -117,15 +132,37 @@ type rawItem struct {
 	Introduced      *struct {
 		Name string `json:"name"`
 	} `json:"introduced"`
-	Vaulted    bool   `json:"vaulted"`
-	IsPrime    bool   `json:"isPrime"`
-	BPCost     int    `json:"bpCost"`
-	MarketCost int    `json:"marketCost"`
-	WikiaURL   string `json:"wikiaUrl"`
-	Components []struct {
+	Vaulted    bool     `json:"vaulted"`
+	IsPrime    bool     `json:"isPrime"`
+	BPCost     int      `json:"bpCost"`
+	MarketCost int      `json:"marketCost"`
+	WikiaURL   string   `json:"wikiaUrl"`
+	Polarities []string `json:"polarities"`
+	Aura       polarity `json:"aura"`
+	Stance     string   `json:"stancePolarity"`
+	Exilus     string   `json:"exilusPolarity"`
+	// ExaltedSlot is "Primary", "Secondary" or "Melee" for an exalted
+	// weapon, saying which weapons' mods it takes.
+	ExaltedSlot string `json:"exaltedSlot"`
+	Components  []struct {
 		UniqueName string `json:"uniqueName"`
 		ItemCount  int    `json:"itemCount"`
 	} `json:"components"`
+}
+
+// polarity is a slot polarity that WFCD may give as a list: Jade has two
+// aura slots. Seshat plans one, the first.
+type polarity string
+
+func (p *polarity) UnmarshalJSON(b []byte) error {
+	var list []string
+	if json.Unmarshal(b, &list) == nil {
+		if len(list) > 0 {
+			*p = polarity(list[0])
+		}
+		return nil
+	}
+	return json.Unmarshal(b, (*string)(p))
 }
 
 // Supplements are masterable items WFCD does not ship at all.
@@ -280,7 +317,8 @@ func classify(file string, r rawItem) (Item, bool) {
 		ImageName: r.ImageName, Description: r.Description,
 		ReleaseDate: r.ReleaseDate, Vaulted: r.Vaulted, Prime: r.IsPrime,
 		WikiURL: r.WikiaURL, CreditBP: r.BPCost, Platinum: r.MarketCost,
-		Dojo: isDojo(r),
+		Dojo:       isDojo(r),
+		Polarities: r.Polarities, AuraPolarity: string(r.Aura), StancePolarity: r.Stance, ExilusPolarity: r.Exilus,
 	}
 	if r.Introduced != nil {
 		it.Introduced = r.Introduced.Name
@@ -385,4 +423,83 @@ func partName(uniqueName string) string {
 		}
 	}
 	return camel.ReplaceAllString(base, "$1 $2")
+}
+
+// LoadExalted reads the exalted weapons from the cached Misc file: those
+// a warframe summons that take primary, secondary or melee mods. (The
+// Necramech and Archwing ones are left out.)
+func LoadExalted(dir string) ([]Item, error) {
+	b, err := os.ReadFile(filepath.Join(dir, "Misc.json"))
+	if err != nil {
+		return nil, err
+	}
+	var raws []rawItem
+	if err := json.Unmarshal(b, &raws); err != nil {
+		return nil, fmt.Errorf("Misc.json: %w", err)
+	}
+	var out []Item
+	for _, r := range raws {
+		if r.Type != "Exalted Weapon" || !strings.HasPrefix(r.UniqueName, "/Lotus/Powersuits/") {
+			continue
+		}
+		it := Item{
+			ID: r.UniqueName, Name: r.Name, MaxRank: 30, ImageName: r.ImageName,
+			Description: r.Description, WikiURL: r.WikiaURL, Prime: r.IsPrime, Exalted: true,
+			Polarities: r.Polarities, StancePolarity: r.Stance, ExilusPolarity: r.Exilus,
+		}
+		switch r.ExaltedSlot {
+		case "Primary":
+			// Which primary mods fit depends on the kind of gun.
+			it.Category, it.Type = CatPrimary, "Rifle"
+			switch {
+			case strings.Contains(r.Name, "Bow"):
+				it.Type = "Bow"
+			case strings.Contains(r.UniqueName, "Sniper"):
+				it.Type = "Sniper"
+			}
+		case "Secondary":
+			it.Category, it.Type = CatSecondary, "Pistol"
+		case "Melee":
+			it.Category, it.Type = CatMelee, "Melee"
+		default:
+			continue
+		}
+		out = append(out, it)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+// ExaltedFor lists a warframe's exalted weapons. Each sits in its frame's
+// folder (Titania's Diwata and Titania Prime's Diwata Prime are both under
+// .../Fairy/), and a Prime or Umbra frame has its own version where there
+// is one, else the plain one.
+func ExaltedFor(frame Item, exalted []Item) []Item {
+	dir := path.Dir(frame.ID) + "/"
+	variant := func(name string) string {
+		switch {
+		case strings.Contains(name, "Umbra"):
+			return "Umbra"
+		case strings.Contains(name, "Prime"):
+			return "Prime"
+		}
+		return ""
+	}
+	want := variant(frame.Name)
+	var same, plain []Item
+	for _, e := range exalted {
+		if !strings.HasPrefix(e.ID, dir) {
+			continue
+		}
+		switch variant(e.Name) {
+		case want:
+			same = append(same, e)
+		case "":
+			plain = append(plain, e)
+		}
+	}
+	if len(same) > 0 {
+		return same
+	}
+	return plain
 }

@@ -1,6 +1,9 @@
 package catalog
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestClassifyModular(t *testing.T) {
 	cases := []struct {
@@ -64,6 +67,34 @@ func TestIsDojo(t *testing.T) {
 	} {
 		if got := isDojo(c.raw); got != c.want {
 			t.Errorf("isDojo(%s) = %v, want %v", c.raw.Name, got, c.want)
+		}
+	}
+}
+
+func TestExaltedFor(t *testing.T) {
+	ex := []Item{
+		{ID: "/Lotus/Powersuits/Excalibur/DoomSword", Name: "Exalted Blade"},
+		{ID: "/Lotus/Powersuits/Excalibur/DoomSwordPrime", Name: "Exalted Prime Blade"},
+		{ID: "/Lotus/Powersuits/Excalibur/DoomSwordUmbra", Name: "Exalted Umbra Blade"},
+		{ID: "/Lotus/Powersuits/Pacifist/PacifistFist", Name: "Desert Wind"},
+	}
+	for _, c := range []struct {
+		frame Item
+		want  string
+	}{
+		{Item{ID: "/Lotus/Powersuits/Excalibur/Excalibur", Name: "Excalibur"}, "Exalted Blade"},
+		{Item{ID: "/Lotus/Powersuits/Excalibur/ExcaliburPrime", Name: "Excalibur Prime"}, "Exalted Prime Blade"},
+		{Item{ID: "/Lotus/Powersuits/Excalibur/ExcaliburUmbra", Name: "Excalibur Umbra"}, "Exalted Umbra Blade"},
+		{Item{ID: "/Lotus/Powersuits/Pacifist/BaruukPrime", Name: "Baruuk Prime"}, "Desert Wind"}, // no Prime one here: the plain one
+		{Item{ID: "/Lotus/Powersuits/Ninja/Ash", Name: "Ash"}, ""},
+	} {
+		frame, want := c.frame, c.want
+		var got []string
+		for _, e := range ExaltedFor(frame, ex) {
+			got = append(got, e.Name)
+		}
+		if strings.Join(got, ",") != want {
+			t.Errorf("%s: %q, want %q", frame.Name, got, want)
 		}
 	}
 }

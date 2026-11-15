@@ -59,6 +59,7 @@ In the TUI press `?` for every key. The main ones:
 | `T` | theme: follow your terminal's colours (default), or Seshat's own |
 | `N` | next up: the easiest items left to master, and where each MR lands |
 | `R` | relic finder: relics holding parts you need; there `enter` opens one, `/` looks up any part or relic, `c` counts your relics, `o` lists them |
+| `B` | builds: plan mods and arcanes for a warframe or weapon, and see what it still needs (`b` from an item's details) |
 | `x` | ledger: star chart & steel path XP, intrinsic ranks, for the MR estimate |
 | `u` | sync item data now |
 | `P` | import from your Warframe profile: mastery, intrinsics, Star Chart and Steel Path |
@@ -295,6 +296,61 @@ The advice is rules of thumb, and each one says why:
   Parts marked as put aside in an item's details are counted among the
   ones you hold, not on top of them.
 
+## Builds
+
+Press `B` for the builds you've planned, or `b` in an item's details to
+plan one for it: warframes, primary, secondary and melee weapons, and
+exalted weapons. A build is the mods and arcanes it's to have, and the
+point is the line at the top saying what the item still needs before it
+can go on, e.g. *Needs Orokin Reactor · 2 Forma (N, V) · Exilus Warframe
+Adapter · Warframe Arcane Adapter*. Put the build together now, and come
+back when you have the Reactor and the Forma.
+
+The slots are laid out as in the game: the aura (or a melee weapon's
+stance) and the exilus, eight mods, and the arcanes (two on a warframe, one
+on a weapon). Move with the arrows and:
+
+- `enter` picks a mod or arcane for the slot, from the ones that fit it,
+  each with what it would cost there. It goes in at max rank; `[` and `]`
+  change the rank.
+- `p` (or `P` back) plans a polarity for the slot: a Forma. The slot shows
+  `◆` until you've done it in the game and pressed `f`. Polarities go by
+  their first letter: **M**adurai, **V**azarin, **N**aramon, **Z**enurik,
+  **U**mbra and **A**ny.
+- `r` once the Orokin Reactor (warframe) or Catalyst (weapon) is
+  installed. The exilus and arcane slots start locked, as in the game:
+  select one and press `u` once you've used its adapter on it. Until then
+  the build asks for the adapter, but only if something's planned for
+  that slot.
+- `M` moves a whole slot, polarity and all, to lay the slots out as your
+  item has them in the game (the data doesn't say which slot each
+  built-in polarity is in, so they start in the first slots).
+- `X` goes from a warframe's build to its exalted weapons' (Exalted Blade,
+  Titania's Diwata and Dex Pixia, Mesa's Regulators and so on) and back.
+  They're modded like weapons, with their own Catalyst, exilus and arcane
+  slot, and can also be found by name with `a` in the list.
+- `c` switches between configs A, B and C, as in the game. Each has its
+  own mods, arcanes and notes; the polarities, Reactor or Catalyst and
+  unlocked slots are the item's, so all three share them, and the item's
+  needs cover every config. `C` copies the config before into this one
+  (B from A, C from B), to start a variant.
+- `m` moves a mod to another slot, `x` clears one, `n` writes notes (what
+  the build is for, what to swap in later), `D` twice deletes the build.
+
+Capacity follows the game's rules: a mod costs its base drain plus its
+rank, halved (rounding up) in a slot of its polarity, a quarter more in a
+slot of another. An aura or stance adds its capacity instead, doubled by a
+match. An item has its max rank (30, or 40 for Kuva and the like) in
+capacity, doubled by a Reactor or Catalyst; one is asked for only when
+the mods don't fit without it. The list (`tab` for **All**, **To do** and
+**Done**) shows what each build is still waiting on.
+
+Mods and arcanes come from WFCD, like the items. Two things it doesn't
+say, so Seshat can't check: what class a melee weapon is, so every
+class's mods and stances are offered on all of them; and which slot each
+built-in polarity is in, so they fill the first slots, which makes no
+difference to capacity.
+
 ## Prices
 
 `seshat price arcane energize` shows, for rank 0 and max rank (or the one
@@ -311,7 +367,7 @@ downloaded again when warframe.market says it changed.
 
 ## Files
 
-- `~/.local/share/seshat/progress.json`: your marks (back this up, or use `E`)
+- `~/.local/share/seshat/progress.json`: your marks and builds (back this up, or use `E`)
 - `~/.cache/seshat/`: cached item data and icons (safe to delete)
 
 ## Theme

@@ -39,6 +39,102 @@ type Arcane struct {
 	Copies int `json:"copies,omitempty"`
 }
 
+// Build is what's planned for one item, and how far it's got in the game.
+// As in the game, the item has up to three configs, each with its own mods
+// and arcanes, while the slots' polarities, the Reactor or Catalyst and
+// the unlocked slots belong to the item and so are shared. IDs are WFCD
+// uniqueNames; polarities are as WFCD names them ("madurai"), "" for none.
+type Build struct {
+	// Slots holds the ordinary mod slots, then the aura or stance slot,
+	// then the exilus slot (package builds numbers them).
+	Slots []BuildSlot `json:"slots"`
+	// ArcanesUnlocked says, for each arcane slot, whether it's been
+	// unlocked in the game, which takes an adapter.
+	ArcanesUnlocked []bool `json:"arcanesUnlocked"`
+	// Configs are A, B and C; Active is the one last looked at.
+	Configs []BuildConfig `json:"configs"`
+	Active  int           `json:"active,omitempty"`
+	// Reactor is an Orokin Reactor (a warframe) or Catalyst (a weapon)
+	// installed in the game, and Exilus the exilus slot unlocked with an
+	// adapter.
+	Reactor bool `json:"reactor,omitempty"`
+	Exilus  bool `json:"exilus,omitempty"`
+}
+
+// BuildSlot is one mod slot: the polarity it's planned to have and the one
+// it has in the game now. The two differ until a Forma is spent on it.
+type BuildSlot struct {
+	Polarity string `json:"polarity,omitempty"`
+	Has      string `json:"has,omitempty"`
+}
+
+// BuildConfig is one config: a mod for each slot, an arcane for each
+// arcane slot, and notes on what it's for.
+type BuildConfig struct {
+	Mods    []BuildMod `json:"mods"`
+	Arcanes []BuildMod `json:"arcanes"`
+	Notes   string     `json:"notes,omitempty"`
+}
+
+// BuildMod is a mod or arcane, and the rank it's planned at. An empty ID
+// is an empty slot.
+type BuildMod struct {
+	ID   string `json:"id,omitempty"`
+	Rank int    `json:"rank,omitempty"`
+}
+
+// Config is the config being looked at.
+func (b Build) Config() BuildConfig { return b.Configs[b.Active] }
+
+// legacyBuild is a build as saved before configs: the one set of mods
+// and arcanes in the slots themselves.
+type legacyBuild struct {
+	Slots []struct {
+		Mod  string `json:"mod"`
+		Rank int    `json:"rank"`
+	} `json:"slots"`
+	Arcanes []struct {
+		ID       string `json:"id"`
+		Rank     int    `json:"rank"`
+		Unlocked bool   `json:"unlocked"`
+	} `json:"arcanes"`
+	Notes string `json:"notes"`
+}
+
+// upgradeBuilds moves builds saved before configs into config A, and
+// gives every build its three configs.
+func upgradeBuilds(p *Progress, raw []byte) {
+	var old struct {
+		Builds map[string]legacyBuild `json:"builds"`
+	}
+	_ = json.Unmarshal(raw, &old)
+	for id, b := range p.Builds {
+		if len(b.Configs) == 0 {
+			lb := old.Builds[id]
+			a := BuildConfig{Notes: lb.Notes}
+			for _, s := range lb.Slots {
+				a.Mods = append(a.Mods, BuildMod{s.Mod, s.Rank})
+			}
+			for _, ar := range lb.Arcanes {
+				a.Arcanes = append(a.Arcanes, BuildMod{ar.ID, ar.Rank})
+				b.ArcanesUnlocked = append(b.ArcanesUnlocked, ar.Unlocked)
+			}
+			b.Configs = []BuildConfig{a}
+		}
+		for len(b.Configs) < NumConfigs {
+			b.Configs = append(b.Configs, BuildConfig{
+				Mods:    make([]BuildMod, len(b.Slots)),
+				Arcanes: make([]BuildMod, len(b.ArcanesUnlocked)),
+			})
+		}
+		b.Active = min(max(b.Active, 0), NumConfigs-1)
+		p.Builds[id] = b
+	}
+}
+
+// NumConfigs is how many configs an item has: A, B and C.
+const NumConfigs = 3
+
 // Settings are UI preferences that persist between sessions.
 type Settings struct {
 	HideMastered bool   `json:"hideMastered"`
@@ -68,9 +164,11 @@ type Progress struct {
 	Arcanes map[string]Arcane `json:"arcanes,omitempty"`
 	// Spares counts the prime parts held to sell, by game ID: the extras,
 	// unlike Parts, which counts toward building an item.
-	Spares   map[string]int `json:"spares,omitempty"`
-	Settings Settings       `json:"settings"`
-	Updated  time.Time      `json:"updated"`
+	Spares map[string]int `json:"spares,omitempty"`
+	// Builds are the builds planned, by item ID.
+	Builds   map[string]Build `json:"builds,omitempty"`
+	Settings Settings         `json:"settings"`
+	Updated  time.Time        `json:"updated"`
 }
 
 func New() *Progress {
@@ -99,6 +197,7 @@ func parse(b []byte) (*Progress, error) {
 	if p.Seen == nil {
 		p.Seen = map[string]bool{}
 	}
+	upgradeBuilds(p, b)
 	// The Plexus briefly used a made-up ID before its real one was known.
 	if mk, ok := p.Marks["seshat:plexus"]; ok {
 		p.Marks["/Lotus/Types/Game/CrewShip/RailJack/DefaultHarness"] = mk
@@ -190,6 +289,23 @@ func (p *Progress) SetSpares(id string, n int) {
 	p.Spares[id] = n
 }
 
+// Build is the build planned for an item, if there is one.
+func (p *Progress) Build(id string) (Build, bool) {
+	b, ok := p.Builds[id]
+	return b, ok
+}
+
+// SetBuild records the build planned for an item.
+func (p *Progress) SetBuild(id string, b Build) {
+	if p.Builds == nil {
+		p.Builds = map[string]Build{}
+	}
+	p.Builds[id] = b
+}
+
+// DeleteBuild forgets the build planned for an item.
+func (p *Progress) DeleteBuild(id string) { delete(p.Builds, id) }
+
 func (p *Progress) Get(id string) Mark { return p.Marks[id] }
 
 func (p *Progress) Set(id string, m Mark) {
@@ -200,7 +316,7 @@ func (p *Progress) Set(id string, m Mark) {
 	p.Marks[id] = m
 }
 
-// Import replaces marks, parts, relics, arcanes, spares and extra XP from a
+// Import replaces marks, parts, relics, arcanes, spares, builds and extra XP from a
 // backup file, keeping Seen.
 func (p *Progress) Import(path string) error {
 	b, err := os.ReadFile(path)
@@ -213,7 +329,7 @@ func (p *Progress) Import(path string) error {
 	}
 	p.Marks, p.Parts, p.Extra = in.Marks, in.Parts, in.Extra
 	p.Relics, p.RelicsCounted = in.Relics, in.RelicsCounted
-	p.Arcanes, p.Spares = in.Arcanes, in.Spares
+	p.Arcanes, p.Spares, p.Builds = in.Arcanes, in.Spares, in.Builds
 	return nil
 }
 

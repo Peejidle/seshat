@@ -26,6 +26,14 @@ const (
 	marketVersionsURL = "https://api.warframe.market/v2/versions"
 )
 
+// ModsFile and ArcanesFile are WFCD's mods and arcanes, read by package
+// builds. They aren't items to master, so they're kept apart from
+// SourceFiles.
+const (
+	ModsFile    = "Mods.json"
+	ArcanesFile = "Arcanes.json"
+)
+
 // DropsFile is the cached drop tables, read by package relics.
 const DropsFile = "drops.json"
 
@@ -51,6 +59,8 @@ func sources() []source {
 		s = append(s, source{file: f + ".json", url: dataURL + f + ".json"})
 	}
 	return append(s,
+		source{file: ModsFile, url: dataURL + ModsFile},
+		source{file: ArcanesFile, url: dataURL + ArcanesFile},
 		source{file: DropsFile, url: dropsURL},
 		source{file: NodesFile, url: nodesURL},
 		source{file: market.ItemsFile, url: marketURL, version: marketVersion},
