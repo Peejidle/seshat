@@ -156,15 +156,75 @@ func TestSellView(t *testing.T) {
 	}
 	m.width = 200
 	v := m.sellView()
-	for _, want := range []string{"Worth about 650p", "list 2 maxed at 119p", "Nekros Prime isn't built: keep 1"} {
+	for _, want := range []string{"Worth about 628p", "list 2 maxed at 119p", "keep 1 for Nekros Prime"} {
 		if !strings.Contains(v, want) {
 			t.Errorf("view lacks %q:\n%s", want, v)
 		}
 	}
 
-	// Once its Neuroptics are put aside for building it, the spares are spare.
+	if strings.Contains(v, "list 1 at") {
+		t.Errorf("the only Neuroptics held should be kept, not listed:\n%s", v)
+	}
+
+	// A second one is spare: keep one, sell the other.
+	m.prog.SetSpares("/nekros/HelmetBlueprint", 2)
+	v = m.sellView()
+	if !strings.Contains(v, "keep 1 for Nekros Prime · then list 1 at 22p") {
+		t.Errorf("one of two should be kept and one listed:\n%s", v)
+	}
+
+	// Marking one as put aside doesn't make it extra: it's one of the two.
 	m.prog.SetPart("/nekros", "/nekros/HelmetComponent", 1)
-	if strings.Contains(m.sellView(), "isn't built") {
-		t.Error("a part already put aside shouldn't be warned about")
+	if !strings.Contains(m.sellView(), "keep 1 for Nekros Prime") {
+		t.Error("a part put aside is one of those held, still to keep")
+	}
+
+	// Built, nothing is kept for it.
+	m.prog.Set("/nekros", store.Mark{Owned: true})
+	if v := m.sellView(); strings.Contains(v, "keep 1") || !strings.Contains(v, "list 2 at 22p") {
+		t.Errorf("once it's built, all of them sell:\n%s", v)
+	}
+}
+
+func TestSellFilters(t *testing.T) {
+	m := addSell(sellModel(t), "energize", "2")
+	m = key(addSell(m, "nekros neuro", "1"), tea.KeyEsc)
+	names := func() (out []string) {
+		for _, r := range m.sellRows() {
+			out = append(out, r.it.Name)
+		}
+		return out
+	}
+	want := map[sellFilter]string{
+		showAll:     "Arcane Energize,Nekros Prime Neuroptics Blueprint",
+		showArcanes: "Arcane Energize",
+		showParts:   "Nekros Prime Neuroptics Blueprint",
+		showSell:    "Arcane Energize", // the one Neuroptics is Nekros Prime's
+		showKeep:    "Nekros Prime Neuroptics Blueprint",
+	}
+	for f := showAll; f <= showKeep; f++ {
+		if m.sellShow != f {
+			t.Fatalf("tab should step through the views in order: at %d, want %d", m.sellShow, f)
+		}
+		if got := strings.Join(names(), ","); got != want[f] {
+			t.Errorf("%s lists %q, want %q", sellFilters[f], got, want[f])
+		}
+		if len(m.sellRows()) > 0 && m.sellRows()[m.sellIndex(m.sellRows())].it.GameRef != m.sellID {
+			t.Errorf("%s: the selection should be in the view", sellFilters[f])
+		}
+		m = key(m, tea.KeyTab)
+	}
+	if m.sellShow != showAll {
+		t.Error("tab from the last view should wrap to All")
+	}
+	if m = key(m, tea.KeyShiftTab); m.sellShow != showKeep {
+		t.Error("shift+tab from All should wrap to the last view")
+	}
+
+	// With a second one, there's one to sell as well as one to keep.
+	m.prog.SetSpares("/nekros/HelmetBlueprint", 2)
+	m.sellShow = showSell
+	if got := strings.Join(names(), ","); !strings.Contains(got, "Nekros") {
+		t.Errorf("a second copy should be to sell, got %q", got)
 	}
 }

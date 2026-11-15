@@ -145,6 +145,7 @@ type Model struct {
 	partOf     map[string]partRef
 	sellID     string
 	sellTop    int
+	sellShow   sellFilter // which items the list shows
 	sellStep   sellStage
 	sellIn     textinput.Model    // the name of an item to add
 	sellPick   int                // which of its matches is chosen

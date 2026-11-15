@@ -15,10 +15,12 @@ import (
 	"github.com/Peejidle/seshat/internal/store"
 )
 
-// The Sell screen: the arcanes and spare prime parts you hold, priced from
-// warframe.market, with what to list and for how much. Items are added
-// by finding them by name and filling in how many; prices are looked up
-// one item at a time in the background, no faster than the market allows.
+// The Sell screen: the arcanes and prime parts you hold, priced from
+// warframe.market, with what to keep, what to list and for how much. You
+// fill in everything you hold; the copies an item you haven't built needs
+// are kept back, and the rest are advised on. Items are added by finding
+// them by name and filling in how many; prices are looked up one item at
+// a time in the background, no faster than the market allows.
 
 // partRef is the Seshat item and part a market item is.
 type partRef struct {
@@ -26,19 +28,51 @@ type partRef struct {
 	part catalog.Component
 }
 
-// sellRow is one item held to sell.
+// sellRow is one item held.
 type sellRow struct {
-	it     market.Item
-	hold   market.Holding
-	price  market.Prices
-	priced bool // its prices have been looked up, if perhaps a while ago
-	adv    market.Advice
+	it   market.Item
+	hold market.Holding // all that's held
+	// keep is how many of a part to hold on to, for keepFor, an item you
+	// haven't built; the advice is about the rest.
+	keep    int
+	keepFor string
+	price   market.Prices
+	priced  bool // its prices have been looked up, if perhaps a while ago
+	adv     market.Advice
 }
 
 // priceMsg is a price lookup done.
 type priceMsg struct {
 	p   market.Prices
 	err error
+}
+
+// sellFilter is which of the held items the Sell screen lists.
+type sellFilter int
+
+const (
+	showAll     sellFilter = iota
+	showArcanes            // arcanes only
+	showParts              // prime parts only
+	showSell               // what has copies to spare
+	showKeep               // parts an unbuilt item needs
+)
+
+var sellFilters = []string{"All", "Arcanes", "Prime parts", "To sell", "To keep"}
+
+// shows is whether view v lists r.
+func (v sellFilter) shows(r sellRow) bool {
+	switch v {
+	case showArcanes:
+		return r.it.IsArcane()
+	case showParts:
+		return !r.it.IsArcane()
+	case showSell:
+		return r.hold.Copies+r.hold.Maxed > r.keep
+	case showKeep:
+		return r.keep > 0
+	}
+	return true
 }
 
 // sellable is what the Sell screen deals in.
@@ -60,9 +94,12 @@ func (m *Model) matchMarket() {
 	}
 }
 
-// sellRows lists what's held to sell: the most platinum first, then what
-// Baro wants, then what's still being priced.
-func (m Model) sellRows() []sellRow {
+// sellRows lists what's held to sell in the chosen view: the most platinum
+// first, then what Baro wants, then what's still being priced.
+func (m Model) sellRows() []sellRow { return m.sellRowsIn(m.sellShow) }
+
+// sellRowsIn lists what's held to sell in view v.
+func (m Model) sellRowsIn(v sellFilter) []sellRow {
 	if m.market == nil {
 		return nil
 	}
@@ -73,9 +110,13 @@ func (m Model) sellRows() []sellRow {
 			return // no longer on the market
 		}
 		r := sellRow{it: it, hold: h}
+		r.keep, r.keepFor = m.toKeep(it, h.Copies)
+		if !v.shows(r) {
+			return
+		}
 		r.price, r.priced = m.prices.Entries[it.Slug]
-		if r.priced {
-			r.adv = market.Advise(it, h, r.price)
+		if spare := h.Copies - r.keep; r.priced && (spare > 0 || h.Maxed > 0) {
+			r.adv = market.Advise(it, market.Holding{Maxed: h.Maxed, Copies: spare}, r.price)
 		}
 		rows = append(rows, r)
 	}
@@ -120,7 +161,7 @@ func (m *Model) openSell() tea.Cmd {
 		return nil
 	}
 	var stale []market.Item
-	for _, r := range m.sellRows() {
+	for _, r := range m.sellRowsIn(showAll) {
 		if _, fresh := m.prices.Get(r.it.Slug); !fresh {
 			stale = append(stale, r.it)
 		}
@@ -220,6 +261,10 @@ func (m Model) sellKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		move(0)
 	case "G", "end":
 		move(len(rows) - 1)
+	case "tab", "right", "l":
+		m.showFilter(+1)
+	case "shift+tab", "left", "h":
+		m.showFilter(-1)
 	case "a":
 		if m.market == nil {
 			return m, nil
@@ -257,6 +302,18 @@ func (m Model) sellKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	m.scrollSell()
 	return m, nil
+}
+
+// showFilter moves step views along, wrapping around. The selection stays
+// on the same item if the new view lists it, else goes to the top.
+func (m *Model) showFilter(step int) {
+	n := len(sellFilters)
+	m.sellShow = sellFilter((int(m.sellShow) + step + n) % n)
+	m.sellTop = 0
+	rows := m.sellRows()
+	if len(rows) > 0 && rows[m.sellIndex(rows)].it.GameRef != m.sellID {
+		m.sellID = rows[0].it.GameRef
+	}
 }
 
 func (m *Model) scrollSell() {
@@ -436,14 +493,19 @@ func arcaneCounts(h market.Holding) string {
 	return strings.Join(s, ", ")
 }
 
-// unbuiltNote warns when a part is one an item you haven't built needs,
-// and you haven't marked one as put aside for it (in its details, with p).
-func (m Model) unbuiltNote(it market.Item) string {
+// toKeep is how many of the held copies of a part to keep, and the item
+// they're for: what its recipe takes, if you haven't built or mastered it.
+// The copies held are all of them, so any marked as put aside in the
+// item's details are among them, not extra.
+func (m Model) toKeep(it market.Item, held int) (int, string) {
 	ref, ok := m.partOf[it.GameRef]
-	if !ok || !m.stillNeeded(ref.item, ref.part) {
-		return ""
+	if !ok {
+		return 0, ""
 	}
-	return fmt.Sprintf("%s isn't built: keep %d for it?", ref.item.Name, ref.part.Count)
+	if mk := m.prog.Get(ref.item.ID); mk.Owned || mk.Mastered {
+		return 0, ""
+	}
+	return min(held, ref.part.Count), ref.item.Name
 }
 
 func (m Model) sellView() string {
@@ -460,7 +522,7 @@ func (m Model) sellView() string {
 			oldest = r.price.Fetched
 		}
 	}
-	sub := "Arcanes and spare prime parts, priced from warframe.market"
+	sub := "Arcanes and prime parts you hold, priced from warframe.market"
 	if !oldest.IsZero() {
 		sub += " · checked " + ago(oldest)
 	}
@@ -475,7 +537,19 @@ func (m Model) sellView() string {
 			total += fmt.Sprintf(", and %s ducats for Baro", commas(ducats))
 		}
 	}
-	b.WriteString(sGold.Render(trunc(total, w)) + "\n\n")
+	b.WriteString(sGold.Render(trunc(total, w)) + "\n")
+	var tabs []string
+	for i, name := range sellFilters {
+		if n := len(m.sellRowsIn(sellFilter(i))); m.market != nil {
+			name = fmt.Sprintf("%s %d", name, n)
+		}
+		if sellFilter(i) == m.sellShow {
+			tabs = append(tabs, sTitle.Render("["+name+"]"))
+		} else {
+			tabs = append(tabs, sDim.Render(" "+name+" "))
+		}
+	}
+	b.WriteString(strings.Join(tabs, " ") + "\n\n")
 
 	// The middle is the list, or while adding, the form in its place.
 	var lines []string
@@ -506,7 +580,7 @@ func (m Model) sellView() string {
 		b.WriteString(st.Render(trunc(m.sellMsg, w)))
 	}
 	b.WriteString("\n")
-	keys := "a add · enter change counts · +/- one copy · r re-price · w open on warframe.market · j/k move · esc close"
+	keys := "tab view · a add · enter change counts · +/- one copy · r re-price · w open on warframe.market · j/k move · esc close"
 	switch {
 	case m.sellStep == sellFind:
 		keys = "type part of the name · ↑/↓ choose · enter pick · esc done"
@@ -520,8 +594,11 @@ func (m Model) sellView() string {
 }
 
 func (m Model) sellListLines(rows []sellRow, w int) []string {
+	if len(rows) == 0 && m.market != nil && m.sellShow != showAll {
+		return []string{sDim.Render(trunc("Nothing in this view. Press tab for the others.", w))}
+	}
 	if len(rows) == 0 && m.market != nil {
-		return []string{sDim.Render(trunc("Nothing to sell yet. Press a to add an arcane or prime part you hold.", w))}
+		return []string{sDim.Render(trunc("Nothing here yet. Press a to add the arcanes and prime parts you hold.", w))}
 	}
 	var lines []string
 	at := m.sellIndex(rows)
@@ -540,8 +617,16 @@ func (m Model) sellListLines(rows []sellRow, w int) []string {
 			val = sGold.Render(pad(fmt.Sprintf("%7s", "~"+commas(r.adv.Worth)+"p"), 8))
 			advice = sText.Render(strings.Join(r.adv.Steps, " · "))
 		}
-		if note := m.unbuiltNote(r.it); note != "" {
-			advice = sErr.Render(note) + sDim.Render(" · ") + advice
+		if r.keep > 0 {
+			note := sGold.Render(fmt.Sprintf("keep %d for %s", r.keep, r.keepFor))
+			switch {
+			case r.hold.Copies == r.keep:
+				val, advice = sDim.Render(pad("", 8)), note // nothing to sell
+			case r.priced:
+				advice = note + sDim.Render(" · then ") + advice
+			default:
+				advice = note + sDim.Render(" · ") + advice
+			}
 		}
 		lines = append(lines, trunc(sel+name+sDim.Render(pad(held, 20))+val+" "+advice, w))
 	}
@@ -599,9 +684,11 @@ func (m Model) sellCountLines(w int) []string {
 		if it.Ducats > 0 {
 			about += fmt.Sprintf(" · %d ducats each", it.Ducats)
 		}
-		lines := []string{sTitle.Render(trunc(about, w)), "", box(fieldCopies, "How many to sell")}
-		if note := m.unbuiltNote(it); note != "" {
-			lines = append(lines, "", sErr.Render(trunc(note, w)))
+		lines := []string{sTitle.Render(trunc(about, w)), "", box(fieldCopies, "How many you hold")}
+		if keep, name := m.toKeep(it, 1); keep > 0 {
+			ref := m.partOf[it.GameRef]
+			lines = append(lines, "", sDim.Render(trunc(fmt.Sprintf(
+				"%s isn't built yet: %d of these will be kept for it, and only the rest sold.", name, ref.part.Count), w)))
 		}
 		return lines
 	}

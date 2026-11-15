@@ -260,9 +260,11 @@ parts don't. The Plexus is missing from WFCD and is added by hand in
 
 ## Selling
 
-Press `S` for what you hold to sell (arcanes and spare prime parts), each
-priced from warframe.market with what to do about it, most platinum first.
-Seshat can't see your inventory, so you tell it what you hold:
+Press `S` for the arcanes and prime parts you hold, each priced from
+warframe.market with what to do about it, most platinum first. Put in
+everything you hold, not just what you mean to sell: Seshat keeps back what
+an item you haven't built needs and advises on the rest. It can't see your
+inventory, so you tell it what you hold:
 
 1. Press `a` and type part of a name (`energize`, `nekros neuro`). Pick from
    what it matches with `↑`/`↓` and `enter`.
@@ -274,7 +276,10 @@ Seshat can't see your inventory, so you tell it what you hold:
 
 On the list, `enter` changes the selected item's counts (empty them to
 remove it), `+`/`-` add or take one copy, `r` prices it again, and `w`
-opens it on warframe.market, where you list it yourself.
+opens it on warframe.market, where you list it yourself. `tab` (or
+`←`/`→`) switches between views: **All**, **Arcanes**, **Prime parts**,
+**To sell** (anything with copies to spare) and **To keep** (parts an
+unbuilt item needs).
 
 The advice is rules of thumb, and each one says why:
 
@@ -285,8 +290,10 @@ The advice is rules of thumb, and each one says why:
   copies to fuse one pays off, and when copies are too cheap to bother
   selling (dissolve them for Vosfor).
 - **Prime parts** at 3p or less go to Baro for ducats instead.
-- A part that an item you haven't built still needs is flagged, unless
-  you've put one aside for it in the item's details.
+- **Keep** what an item you haven't built or mastered needs ("keep 1 for
+  Limbo Prime"); only the copies beyond that are priced and advised on.
+  Parts marked as put aside in an item's details are counted among the
+  ones you hold, not on top of them.
 
 ## Prices
 
