@@ -72,6 +72,7 @@ const (
 	mProfile
 	mSell
 	mBuilds
+	mMenu
 )
 
 // tab 0 is "All"; tab i>0 is catalog.Categories[i-1].
@@ -117,6 +118,8 @@ type Model struct {
 	// detailBack is the modal the details return to: none, or "next up"
 	// when opened from there.
 	detailBack modal
+
+	menuAt int // the selected line of the menu (,)
 
 	nextAt, nextTop int // selected item and first shown line in "next up"
 	// nextGroup narrows "next up" to one route, 1 + the route, or 0 for
@@ -487,6 +490,8 @@ func (m Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.sellKey(k)
 	case mBuilds:
 		return m.buildKey(k)
+	case mMenu:
+		return m.menuKey(k)
 	}
 
 	if m.searching {
@@ -646,6 +651,9 @@ func (m Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case "B":
 		m.openBuilds()
+		return m, nil
+	case ",":
+		m.openMenu()
 		return m, nil
 	case "E":
 		home, _ := os.UserHomeDir()

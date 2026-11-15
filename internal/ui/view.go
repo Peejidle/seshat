@@ -154,6 +154,8 @@ func (m Model) View() string {
 		return m.overlayFull(m.sellView())
 	case mBuilds:
 		return m.overlayFull(m.buildsView())
+	case mMenu:
+		return m.overlay(m.menuView())
 	case mDetail:
 		if it, ok := m.current(); ok {
 			body := m.detail(it, paneWidth+4, 0)
@@ -544,9 +546,9 @@ func (m Model) statusLine() string {
 func (m Model) hints() string {
 	k := func(key, what string) string { return sKey.Render(key) + sDim.Render(" "+what) }
 	return trunc(" "+strings.Join([]string{
-		k("space", "mastered"), k("o", "owned"), k("v", "select"), k("H", "hide mastered"), k("/", "search"), k("f", "filter"),
-		k("s", "sort"), k("⇥", "category"), k("enter", "details"), k("N", "next up"), k("R", "relics"), k("B", "builds"), k("x", "ledger"),
-		k("u", "sync"), k("?", "help"), k("q", "quit"),
+		k("space", "mastered"), k("o", "owned"), k("/", "search"), k("f", "filter"), k("s", "sort"),
+		k("⇥", "category"), k("enter", "details"), k("N", "next up"), k("R", "relics"), k("S", "sell"),
+		k("B", "builds"), k(",", "menu"), k("?", "help"), k("q", "quit"),
 	}, sDim.Render(" · ")), m.width)
 }
 
@@ -579,6 +581,7 @@ func (m Model) helpView() string {
 		{"R", "relic finder · enter a relic · / look up · c count · o yours · r recount"},
 		{"S", "sell: arcanes and prime parts you hold, priced from warframe.market"},
 		{"B", "builds: plan mods and arcanes, and what each item still needs (b in details)"},
+		{",", "menu: profile import, ledger, sync, theme, backups"},
 		{"w / i", "open the wiki page / full-size image"},
 		{"T", "theme: follow terminal colours, or Seshat's own"},
 		{"x", "ledger: star chart, steel path & intrinsic XP"},

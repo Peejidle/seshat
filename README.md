@@ -41,7 +41,8 @@ seshat import-profile FILE
 seshat price NAME      what an item sells for on warframe.market
 ```
 
-In the TUI press `?` for every key. The main ones:
+In the TUI press `?` for every key, or `,` for a menu of the occasional
+ones (profile import, ledger, sync, theme, backups). The main ones:
 
 | key | does |
 |---|---|
