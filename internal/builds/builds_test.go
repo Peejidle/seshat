@@ -1,9 +1,11 @@
 package builds
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"testing"
 
 	"github.com/Peejidle/seshat/internal/catalog"
@@ -330,6 +332,16 @@ func TestFrameStats(t *testing.T) {
 	}
 	if len(st.Uncounted) != 1 || st.Uncounted[0] != "Some Augment" {
 		t.Errorf("uncounted = %q", st.Uncounted)
+	}
+
+	// Vitality as the game has it now: +100% at rank 10, shown rounded.
+	// Rank 9 shows +91% but is 100*10/11; the arsenal says 887 health.
+	vit := Mod{Stats: [][]string{}}
+	for r := range 11 {
+		vit.Stats = append(vit.Stats, []string{"+" + strconv.Itoa(int(math.Round(100*float64(r+1)/11))) + "% Health"})
+	}
+	if got := 465 * (1 + exact(vit, 9, 0, Health, 0.91)); math.Floor(got) != 887 {
+		t.Errorf("Vitality R9 on 465 health = %v, want 887.x", got)
 	}
 
 	// Shards not yet in the game are what the item still needs.

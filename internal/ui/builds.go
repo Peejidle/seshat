@@ -1121,7 +1121,8 @@ func (m Model) statsPanel(it catalog.Item, b store.Build) []string {
 		case s == builds.Sprint:
 			return strconv.FormatFloat(math.Round(v*100)/100, 'f', -1, 64)
 		}
-		return commas(int(math.Round(v)))
+		// The arsenal rounds down: 887.7 health shows as 887.
+		return commas(int(math.Floor(v + 1e-6)))
 	}
 	lines := []string{sLapis.Render("Stats") + sDim.Render(" · rank 30, config "+configName(b.Active)+" and shards")}
 	for s := range builds.NumStats {

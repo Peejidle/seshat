@@ -1,6 +1,7 @@
 package builds
 
 import (
+	"math"
 	"regexp"
 	"strconv"
 
@@ -99,6 +100,27 @@ type Stats struct {
 	Uncounted []string
 }
 
+// exact is a mod's percentage at a rank as the game counts it, not as it
+// shows it. Most mods grow by the same step each rank, a step that's often
+// not a round number: Vitality is +100% at rank 10, so +9.09% a rank, and
+// shows +91% at rank 9 where it's really +90.9%. So where the shown value
+// is the rounded step, the step is used (v is the shown fraction, line j).
+func exact(md Mod, rank, j int, s Stat, v float64) float64 {
+	top := len(md.Stats) - 1
+	if rank == top || j >= len(md.Stats[top]) {
+		return v
+	}
+	ts, tv, ok := parseStat(md.Stats[top][j])
+	if !ok || ts != s {
+		return v
+	}
+	e := tv * float64(rank+1) / float64(top+1)
+	if math.Abs(e-v) > 0.005+1e-9 { // more than the rounding: not even steps
+		return v
+	}
+	return e
+}
+
 // FrameStats works out a warframe's stats with a build's active config
 // and shards. Percentages from mods multiply the rank 30 value; shards
 // add theirs on top (flat amounts after the mods, percentages alongside
@@ -128,9 +150,9 @@ func FrameStats(d *Data, it catalog.Item, b store.Build) Stats {
 			continue
 		}
 		counted := true
-		for _, line := range md.Stats[pm.Rank] {
+		for j, line := range md.Stats[pm.Rank] {
 			if s, v, ok := parseStat(line); ok {
-				pct[s] += v
+				pct[s] += exact(md, pm.Rank, j, s, v)
 			} else if s, v, ok := parseTimes(line); ok {
 				times[s] *= v
 			} else {
